@@ -40,9 +40,11 @@ function App() {
     case 'sidebar':
       return (
         <div className={`${isMac ? 'mac' : 'win'}${state.fullscreen ? ' fullscreen' : ''}${state.settings.sidebarRight ? ' sidebar-right' : ''}`} style={{ height: '100%' }}>
-          <Sidebar state={state} floating />
-          {/* A tab dragged out of the peeking sidebar: this overlay then covers the whole window. */}
+          {/* A tab dragged out of the peeking sidebar: this overlay then covers the whole window. The zones
+              come first so the sidebar stays on top of them: over the sidebar a drag reorders, pins or adds
+              a favorite; only over the page does it make a split. */}
           {state.tabDrag ? <SplitDropZones state={state} origin={{ x: 0, y: 0 }} /> : null}
+          <Sidebar state={state} floating />
         </div>
       )
     case 'find':
