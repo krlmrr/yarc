@@ -736,6 +736,51 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
   })
 })
 
+test('dragging a tab inside the peeking sidebar drops in the sidebar, not on the split zones', async () => {
+  for (const n of ['peek-fav', 'peek-tube']) await dispatch({ type: 'open', url: `${base}/${n}`, where: 'tab' })
+  const fav = (await space()).today.find((t) => t.url.endsWith('/peek-fav'))!
+  const tube = (await space()).today.find((t) => t.url.endsWith('/peek-tube'))!
+  await dispatch({ type: 'addFavorite', id: fav.id })
+  // The hidden sidebar slides out on hover; keep it out although the real pointer is elsewhere.
+  await app.evaluate(() => {
+    const b = (globalThis as any).arcBrowser
+    b.realWatchPeek = b.watchPeek
+    b.watchPeek = () => {}
+  })
+  await dispatch({ type: 'toggleSidebar' })
+  await dispatch({ type: 'sidebarPeek', show: true })
+  const overlay = await pageWithUrl('overlay.html')
+  await expect(overlay.locator('.sidebar.floating .row .title', { hasText: 'Page peek-tube' })).toBeVisible()
+  // Start dragging the tab: the overlay grows over the whole window for the split zones.
+  await overlay.evaluate(() => {
+    const w = window as any
+    w.src = [...document.querySelectorAll('.row')].find((r) => r.querySelector('.title')?.textContent === 'Page peek-tube')
+    w.dt = new DataTransfer()
+    w.src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: w.dt }))
+  })
+  await expect(overlay.locator('.split-drop')).toBeVisible()
+  // Drop on the favorites, at whatever is on top there, as a real drag would hit it.
+  const hit = await overlay.evaluate(() => {
+    const w = window as any
+    const r = document.querySelector('.favorites')!.getBoundingClientRect()
+    const x = r.right - 6
+    const y = r.top + r.height / 2
+    const el = document.elementFromPoint(x, y)!
+    for (const type of ['dragover', 'drop']) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: w.dt }))
+    w.src.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: w.dt }))
+    return !!el.closest('.sidebar')
+  })
+  expect(hit).toBe(true)
+  await expect.poll(async () => (await state()).profiles[0].favorites.map((f) => f.id)).toContain(tube.id)
+  expect((await space()).splits).toHaveLength(0)
+  await dispatch({ type: 'sidebarPeek', show: false })
+  await dispatch({ type: 'toggleSidebar' })
+  await app.evaluate(() => {
+    const b = (globalThis as any).arcBrowser
+    b.watchPeek = b.realWatchPeek
+  })
+})
+
 test('state survives a restart', async () => {
   const before = await state()
   await app.close()
