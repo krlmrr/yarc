@@ -217,7 +217,7 @@ export class LittleWindow implements TabHost {
 
   onFoundInPage(): void {}
 
-  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions, disposition: OpenDisposition, url: string): WebContents {
+  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions | undefined, disposition: OpenDisposition, url: string): WebContents {
     // New tabs from a Little Arc page go to the main window, like Arc.
     return this.browser.adoptOpenedPage(opener, options, disposition, url)
   }

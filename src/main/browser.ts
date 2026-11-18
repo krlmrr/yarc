@@ -1859,7 +1859,7 @@ export class Browser implements TabHost {
     this.winOf(tab).main.overlay.webContents.send(IPC.find, { matches: result.matches, active: result.activeMatchOrdinal })
   }
 
-  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions, disposition: OpenDisposition, url: string): WebContents {
+  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions | undefined, disposition: OpenDisposition, url: string): WebContents {
     // The new tab opens in the opener's window (the current one for a Little Arc page).
     this.use(this.winOf(opener))
     const openerItem = findItem(this.state, opener.itemId)
@@ -1867,15 +1867,20 @@ export class Browser implements TabHost {
     const space = this.store.space(spaceId)!
     const item: TabItem = { id: newId(), url, title: url, lastActive: Date.now() }
     space.today.unshift(item)
-    const guest = (options as { webContents?: WebContents }).webContents
-    const view = new WebContentsView({ webContents: guest, webPreferences: options.webPreferences })
-    view.setBackgroundColor('#ffffff')
-    const tab = new LiveTab(this, item.id, opener.profileId, opener.session, undefined, view)
+    let tab: LiveTab
+    if (options) {
+      const guest = (options as { webContents?: WebContents }).webContents
+      const view = new WebContentsView({ webContents: guest, webPreferences: options.webPreferences })
+      view.setBackgroundColor('#ffffff')
+      tab = new LiveTab(this, item.id, opener.profileId, opener.session, undefined, view)
+    } else {
+      tab = new LiveTab(this, item.id, opener.profileId, opener.session, url)
+    }
     this.live.set(item.id, tab)
     this.extensions.addTab(tab, this.window.win)
     if (disposition === 'background-tab') this.changed()
     else setImmediate(() => this.activate(item.id))
-    return view.webContents
+    return tab.wc
   }
 
   showContextMenu(tab: LiveTab, params: ContextMenuParams): void {

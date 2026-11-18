@@ -382,6 +382,18 @@ Leaving Teams switches back to Electron's UA for the next page. The first reques
 carries the Chrome-shaped header, which only matters if that request goes straight to Google
 sign-in.
 
+**`setUserAgent` doesn't reach a page opened through `createWindow`** [tested 2026-11-18, Electron
+45.3.3]. A Teams link clicked in another page (`target=_blank`, e.g. in Google Calendar or Gmail)
+opens in the webContents Electron makes for `window.open`. `did-start-navigation` still calls
+`setUserAgent()`, and `wc.getUserAgent()` reports the Chrome-shaped UA, but the page's
+`navigator.userAgent` keeps `Electron/`. Chromium applies a webContents' UA override only to
+navigations whose entry is marked as overriding: `loadURL` marks it, later navigations in the tab
+inherit it, and a new window's first navigation, which the renderer starts, has no entry to inherit
+from. Signed in to Teams, that tab stays on the `/v2/` loading screen (initials avatar, no content).
+So `setWindowOpenHandler` (`src/main/tab.ts`) denies tabs to hosts that need another UA and opens
+them in a new tab with `loadURL`. Sized popups (`new-window` with features) are left alone, because
+they need `window.opener`.
+
 ### CDP `Emulation.setUserAgentOverride` (for completeness; not recommended)
 
 Params (protocol JSON): `userAgent` (required), `acceptLanguage?`, `platform?`, `userAgentMetadata?`.

@@ -64,7 +64,7 @@ export class Peek implements TabHost {
     this.browser.onFoundInPage(tab, result)
   }
 
-  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions, disposition: OpenDisposition, url: string): WebContents {
+  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions | undefined, disposition: OpenDisposition, url: string): WebContents {
     return this.browser.adoptOpenedPage(opener, options, disposition, url)
   }
 
