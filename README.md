@@ -319,9 +319,9 @@ The PR titles are also the app's **What's New**: before the builds, [`scripts/ch
 
 The version lives in git tags; `package.json` says `0.0.0-dev` and CI stamps the tag's version into it at build time. To release by hand, run the workflow from the Actions tab and pick the bump.
 
-Installed copies only see published releases: Windows downloads the update via `latest.yml`, macOS downloads the `-mac.zip` and checks its `.sig`, and Linux gets a notice that links to the new `.AppImage`.
+Installed copies only see published releases: Windows downloads the update via `latest.yml` and checks the installer's `.sig`, macOS downloads the `-mac.zip` and checks its `.sig`, and Linux gets a notice that links to the new `.AppImage`.
 
-The macOS zips are signed with an Ed25519 key, and the app only installs a zip signed with the key whose public half is `UPDATE_PUBLIC_KEY` in [`src/main/update-signature.ts`](src/main/update-signature.ts). The private key is the `MAC_UPDATE_SIGNING_KEY` repository secret; without it (or with a key that doesn't match) the macOS build fails. To make a new key pair, run `node --experimental-strip-types scripts/sign-update.mts keygen <file>`, put the printed public key in `UPDATE_PUBLIC_KEY`, and the file's contents in the secret. Installed copies only accept updates signed with the key they were built with, so a new key only reaches them through one manual reinstall.
+The macOS zips and the Windows installers are signed with an Ed25519 key, and the app only installs an update signed with the key whose public half is `UPDATE_PUBLIC_KEY` in [`src/main/update-signature.ts`](src/main/update-signature.ts). The private key is the `MAC_UPDATE_SIGNING_KEY` repository secret (named before Windows used it too); without it (or with a key that doesn't match) the macOS and Windows builds fail. To make a new key pair, run `node --experimental-strip-types scripts/sign-update.mts keygen <file>`, put the printed public key in `UPDATE_PUBLIC_KEY`, and the file's contents in the secret. Installed copies only accept updates signed with the key they were built with, so a new key only reaches them through one manual reinstall.
 
 #### Electron security updates
 

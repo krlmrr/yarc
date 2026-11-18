@@ -1,6 +1,7 @@
-// Ed25519 signatures for the macOS self-update zips. The release workflow signs each zip
-// (scripts/sign-update.mts) with the private key in the MAC_UPDATE_SIGNING_KEY secret, and the app only
-// installs a zip whose signature matches UPDATE_PUBLIC_KEY. No Electron imports, so CI and unit tests use it.
+// Ed25519 signatures for the macOS self-update zips and the Windows installers. The release workflow
+// signs each one (scripts/sign-update.mts) with the private key in the MAC_UPDATE_SIGNING_KEY secret,
+// and the app only installs an update whose signature matches UPDATE_PUBLIC_KEY.
+// No Electron imports, so CI and unit tests use it.
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 
 export const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { compareVersions, isNewer, pickDownload, pickMacUpdate, type GithubRelease } from '../../src/main/release.ts'
+import {
+  compareVersions,
+  isNewer,
+  pickDownload,
+  pickMacUpdate,
+  releaseAssetUrl,
+  windowsInstallerName,
+  type GithubRelease
+} from '../../src/main/release.ts'
 
 test('compareVersions orders release versions numerically', () => {
   assert.equal(compareVersions('0.1.10', '0.1.9'), 1)
@@ -69,4 +77,10 @@ test('pickMacUpdate picks the signed zip for this Mac’s CPU', () => {
 test('pickMacUpdate needs a signature', () => {
   assert.equal(pickMacUpdate(release, 'x64'), undefined)
   assert.equal(pickMacUpdate({ ...release, assets: [] }, 'arm64'), undefined)
+})
+
+test('windowsInstallerName and releaseAssetUrl find the installer’s signature', () => {
+  const name = windowsInstallerName('0.1.3', 'x64')
+  assert.equal(name, 'YARC-Setup-0.1.3-x64.exe')
+  assert.equal(releaseAssetUrl('0.1.3', `${name}.sig`), url('YARC-Setup-0.1.3-x64.exe.sig'))
 })

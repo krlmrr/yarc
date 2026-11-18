@@ -65,3 +65,13 @@ export function pickMacUpdate(release: GithubRelease, arch: string): MacUpdate |
   if (!zip || !signature) return undefined
   return { name: zip.name, url: zip.browser_download_url, signatureUrl: signature.browser_download_url }
 }
+
+/** electron-builder.yml (nsis.artifactName) names the Windows installers YARC-Setup-<version>-<arch>.exe. */
+export function windowsInstallerName(version: string, arch: string): string {
+  return `YARC-Setup-${version}-${arch}.exe`
+}
+
+/** Where a release's file is, by name. From yenebeb/yarc whatever feed electron-updater was built with. */
+export function releaseAssetUrl(version: string, name: string): string {
+  return `https://github.com/yenebeb/yarc/releases/download/v${version}/${name}`
+}

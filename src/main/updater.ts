@@ -1,4 +1,5 @@
-// In-app updates. Windows installs them in place with electron-updater (NSIS installer). macOS
+// In-app updates. Windows installs them in place with electron-updater (NSIS installer), once the
+// installer's signature checks out (windows-update.ts). macOS
 // builds are only ad-hoc signed, which Squirrel.Mac refuses, so macOS replaces its own bundle
 // with a signed zip from the release (mac-update.ts). Linux, and a Mac that can't write to the
 // app's folder, only hear about a new release and open its download.
@@ -15,6 +16,7 @@ import { installAppMenu } from './menus'
 import { isNewer, LATEST_RELEASE_API, pickDownload, pickMacUpdate, type GithubRelease, type MacUpdate } from './release'
 import { isSecurityUpdate, releaseInfoUrl, shouldAsk, startWaiting } from './update-escalation'
 import { pendingReleases, RELEASES_API, type GithubReleaseNotes } from './update-notes'
+import { verifyInstaller } from './windows-update'
 
 const CHECK_EVERY = 60 * 60_000
 
@@ -23,6 +25,8 @@ export class Updater {
   /** For a notify-only update: the installer to open, and the release page. */
   private download = { installer: '', page: '' }
   private nsis: NsisUpdater | undefined
+  /** Windows: an update passed its signature check, so it installs when YARC quits. */
+  private installOnQuit = false
   private timer: NodeJS.Timeout | undefined
   /** The ready update has a newer Electron, so Chromium security fixes: the card comes sooner. */
   private security = false
@@ -203,15 +207,35 @@ export class Updater {
     const { NsisUpdater } = await import('electron-updater')
     const updater = new NsisUpdater()
     updater.autoDownload = true
-    updater.autoInstallOnAppQuit = true
+    // Not electron-updater's install on quit: it would install before the signature check is done.
+    updater.autoInstallOnAppQuit = false
     updater.on('update-available', (info) => this.set({ state: 'downloading', version: info.version }))
-    updater.on('update-downloaded', (info) => void this.ready(info.version))
+    updater.on('update-downloaded', (info) => void this.readyWindows(updater, info.version, info.downloadedFile))
     updater.on('error', (err) => {
       console.error('[updater]', err)
       if (this.status.state === 'downloading') this.set({ state: 'none' })
     })
     this.nsis = updater
     return updater
+  }
+
+  /** The installer is downloaded: offer it, and install it on quit, only if its signature checks out. */
+  private async readyWindows(updater: NsisUpdater, version: string, file: string): Promise<void> {
+    try {
+      await verifyInstaller(file, version, process.arch)
+    } catch (err) {
+      console.error('[updater] not installing the Windows update', err)
+      this.set({ state: 'none' })
+      return
+    }
+    if (!this.installOnQuit) {
+      this.installOnQuit = true
+      // What electron-updater's autoInstallOnAppQuit does: a silent install, without relaunching.
+      app.once('quit', (_event, exitCode) => {
+        if (exitCode === 0) updater.install(true, false)
+      })
+    }
+    void this.ready(version)
   }
 
   private async checkGithub(): Promise<boolean> {
