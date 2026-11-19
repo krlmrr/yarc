@@ -52,8 +52,11 @@ const BURST_MS = 10_000
 /** Counts downloads per site, so a page can't start dozens at once. */
 export class DownloadBurst {
   private recent = new Map<string, number[]>()
+  private now: () => number
 
-  constructor(private now: () => number = Date.now) {}
+  constructor(now: () => number = Date.now) {
+    this.now = now
+  }
 
   /** Whether a download from `site` may start now. */
   allow(site: string): boolean {

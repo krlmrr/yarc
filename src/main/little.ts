@@ -82,7 +82,8 @@ export class LittleWindow implements TabHost {
   }
 
   get url(): string {
-    return this.tab?.wc.getURL() ?? ''
+    // '' once the page is gone: it can be destroyed while the window is still closing.
+    return this.tab && !this.tab.destroyed ? this.tab.wc.getURL() : ''
   }
 
   /** The page's webContents id, while this window has it. */
