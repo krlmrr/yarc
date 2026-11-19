@@ -11,6 +11,7 @@ import {
 } from 'electron'
 import type { ID, LiveInfo } from '../shared/types'
 import { openExternalLink } from './external-links'
+import { userAgentFor } from './useragent'
 
 export type OpenDisposition = 'foreground-tab' | 'background-tab' | 'new-window' | 'other'
 
@@ -21,7 +22,8 @@ export interface TabHost {
   onTabFocus(tab: LiveTab): void
   onTabFullscreen(tab: LiveTab, on: boolean): void
   onFoundInPage(tab: LiveTab, result: Result): void
-  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions, disposition: OpenDisposition, url: string): WebContents
+  /** A page opened a tab: adopt the page Electron made from `options`, or, without them, open `url` in a new tab. */
+  adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions | undefined, disposition: OpenDisposition, url: string): WebContents
   showContextMenu(tab: LiveTab, params: ContextMenuParams): void
   /** A link the user clicked is about to replace the page; return true to open it elsewhere instead. */
   interceptLink?(tab: LiveTab, url: string): boolean
@@ -201,6 +203,13 @@ export class LiveTab {
             webPreferences: { session: this.session, sandbox: true, contextIsolation: true }
           }
         }
+      }
+      // A page Electron creates for window.open keeps the session's UA in navigator.userAgent whatever
+      // setUserAgent says, so sites that need another UA (Teams) open with loadURL instead.
+      const ua = this.session.getUserAgent()
+      if (userAgentFor(url, ua) !== ua) {
+        this.host.adoptOpenedPage(this, undefined, disposition as OpenDisposition, url)
+        return { action: 'deny' }
       }
       return {
         action: 'allow',
