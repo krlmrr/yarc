@@ -8,6 +8,8 @@ import type { CommandId } from '../shared/keymap'
 import type { Browser } from './browser'
 import type { LiveTab } from './tab'
 
+const WEB_LINK = /^https?:/i
+
 export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuParams): Menu {
   const wc = tab.wc
   const items: MenuItemConstructorOptions[] = []
@@ -16,18 +18,24 @@ export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuP
   }
 
   if (p.linkURL) {
-    items.push(
-      { label: 'Open Link in New Tab', click: () => browser.open(p.linkURL, 'background') },
-      { label: 'Open Link in Split View', click: () => browser.open(p.linkURL, 'split') },
-      { label: 'Open Link in Little Arc', click: () => browser.openLittle(p.linkURL) },
-      { label: 'Open Link in Incognito Window', click: () => browser.openIncognito(p.linkURL) },
-      { label: 'Copy Link', click: () => clipboard.writeText(p.linkURL) }
-    )
+    // These load from the main process, which Chromium doesn't stop from opening file: and other
+    // local URLs a page could never navigate to itself: only web links open.
+    if (WEB_LINK.test(p.linkURL)) {
+      items.push(
+        { label: 'Open Link in New Tab', click: () => browser.open(p.linkURL, 'background') },
+        { label: 'Open Link in Split View', click: () => browser.open(p.linkURL, 'split') },
+        { label: 'Open Link in Little Arc', click: () => browser.openLittle(p.linkURL) },
+        { label: 'Open Link in Incognito Window', click: () => browser.openIncognito(p.linkURL) }
+      )
+    }
+    items.push({ label: 'Copy Link', click: () => clipboard.writeText(p.linkURL) })
     sep()
   }
   if (p.mediaType === 'image' && p.srcURL) {
+    if (WEB_LINK.test(p.srcURL) || /^(data:image\/|blob:https?:)/i.test(p.srcURL)) {
+      items.push({ label: 'Open Image in New Tab', click: () => browser.open(p.srcURL, 'background') })
+    }
     items.push(
-      { label: 'Open Image in New Tab', click: () => browser.open(p.srcURL, 'background') },
       { label: 'Save Image As…', click: () => wc.downloadURL(p.srcURL) },
       { label: 'Copy Image', click: () => wc.copyImageAt(p.x, p.y) },
       { label: 'Copy Image Address', click: () => clipboard.writeText(p.srcURL) }

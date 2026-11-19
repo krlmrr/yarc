@@ -49,6 +49,12 @@ function App() {
       )
     case 'find':
       return <FindBar key={key} />
+    case 'notice':
+      return (
+        <div className="notice" role="status">
+          {mode.text}
+        </div>
+      )
     case 'switcher':
       return <Switcher state={state} order={mode.order} index={mode.index} />
     case 'command':

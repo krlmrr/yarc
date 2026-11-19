@@ -34,6 +34,9 @@ export function keysFor(permission: string, mediaTypes?: MediaType[]): string[] 
   return types.map((t) => `media:${t}`)
 }
 
+/** A map without a prototype: an origin or key like "__proto__" is just a key. */
+const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>
+
 export class SiteDecisions {
   private data: SitePermissionsFile
   /** Not Now's "not again this run": gone at the next launch, unlike the count. */
@@ -63,7 +66,7 @@ export class SiteDecisions {
   }
 
   set(origin: string, key: string, setting: SiteSetting): void {
-    ;(this.data.settings[origin] ??= {})[key] = setting
+    ;(this.data.settings[origin] ??= dict())[key] = setting
     this.drop('notNow', origin, key)
     this.refusedThisRun.delete(`${origin}|${key}`)
     this.save(this.data)
@@ -71,7 +74,7 @@ export class SiteDecisions {
 
   notNow(origin: string, key: string): void {
     this.refusedThisRun.add(`${origin}|${key}`)
-    const entry = ((this.data.notNow[origin] ??= {})[key] ??= { count: 0 })
+    const entry = ((this.data.notNow[origin] ??= dict())[key] ??= { count: 0 })
     entry.count++
     if (entry.count >= NOT_NOWS_BEFORE_QUIET) {
       entry.count = 0
@@ -114,12 +117,12 @@ export class SiteDecisions {
 }
 
 function normalize(stored: unknown): SitePermissionsFile {
-  const empty: SitePermissionsFile = { version: 1, settings: {}, notNow: {} }
+  const empty: SitePermissionsFile = { version: 1, settings: dict(), notNow: dict() }
   if (!stored || typeof stored !== 'object') return empty
   const raw = stored as Partial<SitePermissionsFile>
   for (const [origin, keys] of Object.entries(raw.settings ?? {})) {
     for (const [key, setting] of Object.entries(keys ?? {})) {
-      if (setting === 'allow' || setting === 'block') (empty.settings[origin] ??= {})[key] = setting
+      if (setting === 'allow' || setting === 'block') (empty.settings[origin] ??= dict())[key] = setting
     }
   }
   for (const [origin, keys] of Object.entries(raw.notNow ?? {})) {
@@ -127,7 +130,7 @@ function normalize(stored: unknown): SitePermissionsFile {
       if (!entry || typeof entry.count !== 'number') continue
       const clean: { count: number; quietUntil?: number } = { count: entry.count }
       if (typeof entry.quietUntil === 'number') clean.quietUntil = entry.quietUntil
-      ;(empty.notNow[origin] ??= {})[key] = clean
+      ;(empty.notNow[origin] ??= dict())[key] = clean
     }
   }
   return empty

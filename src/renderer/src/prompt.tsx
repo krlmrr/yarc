@@ -14,7 +14,16 @@ const MARGIN = 16
 
 function App() {
   const [prompt, setPrompt] = useState<PermissionPrompt | null>(null)
+  // Allow starts disabled for a moment, so a click meant for the page can't land on it (main ignores those too).
+  const [armed, setArmed] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setArmed(false)
+    if (!prompt) return
+    const timer = setTimeout(() => setArmed(true), 600)
+    return () => clearTimeout(timer)
+  }, [prompt?.id])
 
   useEffect(() => {
     const off = arc.onPrompt(setPrompt)
@@ -72,7 +81,7 @@ function App() {
       </div>
       <div className="perm-buttons">
         <button onClick={() => answer('deny')}>Not Now</button>
-        <button className="primary" onClick={() => answer('allow')}>
+        <button className="primary" disabled={!armed} onClick={() => answer('allow')}>
           Allow
         </button>
       </div>

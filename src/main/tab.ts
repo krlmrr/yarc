@@ -1,5 +1,6 @@
 // A live web page attached to a sidebar item (favorite, pinned or Today tab).
 import {
+  BrowserWindow,
   WebContentsView,
   type BrowserWindowConstructorOptions,
   type ContextMenuParams,
@@ -27,7 +28,12 @@ export interface TabHost {
   showContextMenu(tab: LiveTab, params: ContextMenuParams): void
   /** A link the user clicked is about to replace the page; return true to open it elsewhere instead. */
   interceptLink?(tab: LiveTab, url: string): boolean
+  /** The page tried to open a window without the user clicking or typing just before. */
+  onPopupBlocked?(tab: LiveTab, url: string): void
 }
+
+/** How long a click or key press lets a page open windows, like Chromium's transient user activation. */
+const ACTIVATION_MS = 5000
 
 const WEB_SCHEMES = /^(https?|file|about|data|blob|chrome-extension|view-source|devtools|chrome):/i
 
@@ -50,6 +56,8 @@ export class LiveTab {
   crashed = false
   /** When the user last clicked in the page; navigations right after it are link clicks, not redirects. */
   private lastClick = 0
+  /** When the user last clicked or pressed a key in the page: what lets it open a window. */
+  private lastActivation = 0
 
   constructor(
     public host: TabHost,
@@ -177,6 +185,7 @@ export class LiveTab {
     })
     wc.on('input-event', (_e, input) => {
       if (input.type === 'mouseUp') this.lastClick = Date.now()
+      if (input.type === 'mouseUp' || input.type === 'keyDown' || input.type === 'rawKeyDown' || input.type === 'touchEnd') this.lastActivation = Date.now()
     })
     wc.on('will-navigate', (e, url) => {
       if (!WEB_SCHEMES.test(url)) {
@@ -192,17 +201,14 @@ export class LiveTab {
         void openExternalLink(wc, url)
         return { action: 'deny' }
       }
+      // A pop-up blocker: only a click or key press just before lets a page open windows.
+      if (Date.now() - this.lastActivation > ACTIVATION_MS) {
+        this.host.onPopupBlocked?.(this, url)
+        return { action: 'deny' }
+      }
       // Real popups (OAuth/SSO windows opened with size features) stay popups so window.opener works.
       if (disposition === 'new-window' && features) {
-        return {
-          action: 'allow',
-          overrideBrowserWindowOptions: {
-            autoHideMenuBar: true,
-            width: 520,
-            height: 680,
-            webPreferences: { session: this.session, sandbox: true, contextIsolation: true }
-          }
-        }
+        return { action: 'allow', overrideBrowserWindowOptions: popupOptions(this.session) }
       }
       // A page Electron creates for window.open keeps the session's UA in navigator.userAgent whatever
       // setUserAgent says, so sites that need another UA (Teams) open with loadURL instead.
@@ -216,7 +222,49 @@ export class LiveTab {
         createWindow: (options) => this.host.adoptOpenedPage(this, options, disposition as OpenDisposition, url)
       }
     })
+    wc.on('did-create-window', (win) => wirePopup(win, this.session))
   }
+}
+
+function popupOptions(session: Session): BrowserWindowConstructorOptions {
+  return { autoHideMenuBar: true, width: 520, height: 680, webPreferences: { session, sandbox: true, contextIsolation: true } }
+}
+
+/** A popup's title is the site it shows, never the page's own title: there's no address bar to check. */
+export function popupTitle(url: string): string {
+  try {
+    const u = new URL(url)
+    if (u.protocol === 'https:') return u.host
+    if (u.protocol === 'http:') return `Not Secure – ${u.host}`
+  } catch {}
+  return url.length > 80 ? `${url.slice(0, 80)}…` : url
+}
+
+/** Popup windows (sign-in pages): the site in the title, and the same guards as tabs. */
+function wirePopup(win: BrowserWindow, session: Session): void {
+  const wc = win.webContents
+  const show = () => {
+    if (!win.isDestroyed()) win.setTitle(popupTitle(wc.getURL()))
+  }
+  wc.on('page-title-updated', (e) => {
+    e.preventDefault()
+    show()
+  })
+  wc.on('did-navigate', show)
+  wc.on('did-navigate-in-page', show)
+  wc.on('will-navigate', (e, url) => {
+    if (WEB_SCHEMES.test(url)) return
+    e.preventDefault()
+    void openExternalLink(wc, url)
+  })
+  wc.on('dom-ready', () => void wc.insertCSS(IGNORE_APP_REGIONS, { cssOrigin: 'user' }).catch(() => {}))
+  wc.setWindowOpenHandler(({ url }) => {
+    if (WEB_SCHEMES.test(url)) return { action: 'allow', overrideBrowserWindowOptions: popupOptions(session) }
+    void openExternalLink(wc, url)
+    return { action: 'deny' }
+  })
+  wc.on('did-create-window', (child) => wirePopup(child, session))
+  show()
 }
 
 /** The most common color in a BGRA bitmap (colors close together count as one), as `rgb(…)`. */

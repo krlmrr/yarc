@@ -1,10 +1,11 @@
 // The site permission prompt, drawn like Arc's: a small popover pointing at the URL field, over the
 // page. Its own little view (not the overlay), so the page stays usable around it and the command
 // bar can open without losing the question.
-import { ipcMain, WebContentsView, type BrowserWindow, type Rectangle } from 'electron'
+import { WebContentsView, type BrowserWindow, type Rectangle } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { PermissionPrompt, PromptOp } from '../shared/permissions'
 import type { PermissionRequest, PromptAnswer } from './permission-queue'
+import { handleUi } from './ui-origin'
 import { loadRenderer, uiWebPreferences } from './window'
 
 /** The popover's width (like Arc's), plus room around it for the shadow and the arrow. */
@@ -13,6 +14,11 @@ const MARGIN = 16
 const VIEW_WIDTH = PROMPT_WIDTH + 2 * MARGIN
 /** How far below the view's top the arrow's tip is drawn (prompt.css). */
 const ARROW_TIP = 10
+/**
+ * Clicks on Allow this soon after the prompt appears don't count, like Chrome's: a page can't
+ * get the second click of a double-click it asked for to land on Allow.
+ */
+const ALLOW_DELAY_MS = 500
 
 /** Where the prompt goes, in window coordinates. */
 export type PromptAnchor =
@@ -30,6 +36,8 @@ export class PromptView {
   private height = 0
   private attached = false
   private ready = false
+  /** When the current question went on screen. */
+  private shownAt = 0
 
   constructor(
     private win: BrowserWindow,
@@ -126,6 +134,7 @@ export class PromptView {
     if (!rect || this.win.isDestroyed()) return
     this.view.setBounds(rect)
     const first = !this.attached
+    if (first) this.shownAt = Date.now()
     this.attached = true
     this.win.contentView.addChildView(this.view)
     this.onAttach()
@@ -144,6 +153,7 @@ export class PromptView {
         return this.place()
       case 'answer':
         if (op.id !== this.current?.id) return
+        if (op.answer === 'allow' && (!this.attached || Date.now() - this.shownAt < ALLOW_DELAY_MS)) return
         this.hide()
         return this.onAnswer(op.id, op.answer)
     }
@@ -154,6 +164,6 @@ export class PromptView {
   private static registerIpc(): void {
     if (PromptView.ipcReady) return
     PromptView.ipcReady = true
-    ipcMain.handle(IPC.promptOp, (e, op: PromptOp) => views.get(e.sender.id)?.op(op))
+    handleUi(IPC.promptOp, (e, op: PromptOp) => views.get(e.sender.id)?.op(op))
   }
 }

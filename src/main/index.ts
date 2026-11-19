@@ -2,9 +2,11 @@ import { app, BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { Browser } from './browser'
+import { askForClientCertificates } from './client-certificates'
 import { Extensions } from './extensions'
 import { installAppMenu, installDockMenu } from './menus'
 import { profileDir } from './profile-dir'
+import { registerUiScheme, serveUi } from './ui-origin'
 import { browserUserAgent, userAgentFor } from './useragent'
 
 // Tests and portable setups can point the profile somewhere else.
@@ -12,9 +14,13 @@ if (process.env.YARC_USER_DATA) app.setPath('userData', process.env.YARC_USER_DA
 else app.setPath('userData', profileDir(app.getPath('appData'), app.isPackaged ? 'YARC' : 'YARC (dev)'))
 
 app.userAgentFallback = browserUserAgent(app.userAgentFallback)
+registerUiScheme()
+askForClientCertificates()
 // Pages read navigator.userAgent from their webContents, so switch it as a tab heads to a host that
 // needs another UA. The request that starts the navigation is already sent: profiles.ts fixes its header.
 app.on('web-contents-created', (_e, wc) => {
+  // No page, of any kind, gets a <webview> (it could carry its own preload and preferences).
+  wc.on('will-attach-webview', (e) => e.preventDefault())
   wc.on('did-start-navigation', (e) => {
     if (!e.isMainFrame || e.isSameDocument) return
     const ua = userAgentFor(e.url, wc.session.getUserAgent())
@@ -104,6 +110,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
+    serveUi()
     Extensions.prepareUiSession()
     const b = new Browser()
     await b.restoreSessions()

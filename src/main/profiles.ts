@@ -7,6 +7,7 @@ import { PermissionQueue, type MediaType } from './permission-queue'
 import { SessionCookies, type Cipher } from './session-cookies'
 import { SiteDecisions } from './site-permissions'
 import { CHROME_UA_HOSTS, userAgentFor } from './useragent'
+import { permissionOrigin } from '../shared/permissions'
 import type { ID } from '../shared/types'
 
 export interface ProfileRuntime {
@@ -16,8 +17,8 @@ export interface ProfileRuntime {
 }
 
 /** Permissions granted without asking. Those in PROMPT ask the user (PermissionQueue), who answers per profile (SiteDecisions). */
-const AUTO_GRANT = new Set(['fullscreen', 'clipboard-sanitized-write', 'pointerLock', 'window-management', 'speaker-selection'])
-const PROMPT = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read', 'display-capture', 'idle-detection', 'hid', 'serial', 'usb'])
+const AUTO_GRANT = new Set(['fullscreen', 'clipboard-sanitized-write', 'pointerLock', 'speaker-selection'])
+const PROMPT = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read', 'display-capture', 'idle-detection', 'hid', 'serial', 'usb', 'window-management'])
 
 /**
  * Prompted permissions that report "granted" until the user blocks them. Electron's check handler
@@ -165,12 +166,16 @@ export class Profiles {
   }
 
   private permissions(ses: Session, profileId: ID): void {
-    ses.setPermissionCheckHandler((_wc, permission, origin, details) => {
+    // Like Chrome, a frame's permission is the top-level page's: the prompt names the site the
+    // user is on, and the answer is stored for it (a frame still needs the page's `allow`).
+    ses.setPermissionCheckHandler((wc, permission, origin, details) => {
       if (AUTO_GRANT.has(permission)) return true
       if (permission === 'notifications' && crossOrigin(origin, (details as { embeddingOrigin?: string }).embeddingOrigin)) return false
+      const top = permissionOrigin(wc && !details.isMainFrame ? wc.getURL() : origin)
+      if (!top) return false
       const type = (details as { mediaType?: string }).mediaType
       const media = type === 'video' || type === 'audio' ? [type as MediaType] : undefined
-      return this.permissionQueue.decided(profileId, originOf(origin), permission, media) ?? ASK_ON_REQUEST.has(permission)
+      return this.permissionQueue.decided(profileId, top, permission, media) ?? ASK_ON_REQUEST.has(permission)
     })
     ses.setPermissionRequestHandler((wc, permission, callback, details) => {
       if (AUTO_GRANT.has(permission)) return callback(true)
@@ -178,13 +183,12 @@ export class Profiles {
       // Like Chrome, a frame from another site can't ask for notifications: Meet inside Gmail
       // would otherwise ask on every launch.
       if (permission === 'notifications' && !details.isMainFrame && crossOrigin(details.requestingUrl, wc.getURL())) return callback(false)
+      const top = permissionOrigin(details.isMainFrame ? details.requestingUrl : wc.getURL())
+      if (!top) return callback(false)
       const requested = (details as { mediaTypes?: string[] }).mediaTypes ?? []
       const mediaTypes = requested.filter((t): t is MediaType => t === 'video' || t === 'audio')
       this.watch(wc)
-      this.permissionQueue.request(
-        { profileId, wcId: wc.id, origin: originOf(details.requestingUrl), permission, mediaTypes: permission === 'media' ? mediaTypes : undefined },
-        callback
-      )
+      this.permissionQueue.request({ profileId, wcId: wc.id, origin: top, permission, mediaTypes: permission === 'media' ? mediaTypes : undefined }, callback)
     })
   }
 
