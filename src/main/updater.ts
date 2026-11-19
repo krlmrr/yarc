@@ -11,12 +11,12 @@ import { app, BrowserWindow, dialog, net, shell, type MessageBoxOptions } from '
 import type { NsisUpdater } from 'electron-updater'
 import type { ReleaseNotes, UpdateStatus, WaitingUpdate } from '../shared/types'
 import type { Browser } from './browser'
-import { cleanUpStaging, installStaged, stageUpdate, updatableBundle } from './mac-update'
+import { cleanUpStaging, installStaged, stageUpdate, updatableBundle, UpdateRejected } from './mac-update'
 import { installAppMenu } from './menus'
-import { isNewer, LATEST_RELEASE_API, pickDownload, pickMacUpdate, type GithubRelease, type MacUpdate } from './release'
+import { isNewer, LATEST_RELEASE_API, pickDownload, pickMacUpdate, releasePage, type GithubRelease, type MacUpdate } from './release'
 import { isSecurityUpdate, releaseInfoUrl, shouldAsk, startWaiting } from './update-escalation'
 import { pendingReleases, RELEASES_API, type GithubReleaseNotes } from './update-notes'
-import { verifyInstaller } from './windows-update'
+import { stillSigned, verifyInstaller } from './windows-update'
 
 const CHECK_EVERY = 60 * 60_000
 
@@ -31,7 +31,7 @@ export class Updater {
   /** The ready update has a newer Electron, so Chromium security fixes: the card comes sooner. */
   private security = false
   private checking = false
-  /** macOS: a version that failed to update in place, offered as a download instead of retried every hour. */
+  /** macOS: a version whose update failed its checks, not retried until the next launch. */
   private failedVersion = ''
   /** macOS: the downloaded update's executable, to relaunch into once it's swapped in. */
   private relaunchPath = ''
@@ -221,8 +221,9 @@ export class Updater {
 
   /** The installer is downloaded: offer it, and install it on quit, only if its signature checks out. */
   private async readyWindows(updater: NsisUpdater, version: string, file: string): Promise<void> {
+    let checked: Awaited<ReturnType<typeof verifyInstaller>>
     try {
-      await verifyInstaller(file, version, process.arch)
+      checked = await verifyInstaller(file, version, process.arch)
     } catch (err) {
       console.error('[updater] not installing the Windows update', err)
       this.set({ state: 'none' })
@@ -232,7 +233,9 @@ export class Updater {
       this.installOnQuit = true
       // What electron-updater's autoInstallOnAppQuit does: a silent install, without relaunching.
       app.once('quit', (_event, exitCode) => {
-        if (exitCode === 0) updater.install(true, false)
+        if (exitCode !== 0) return
+        if (stillSigned(checked)) updater.install(true, false)
+        else console.error('[updater] the installer changed since it was checked; not installing it')
       })
     }
     void this.ready(version)
@@ -246,11 +249,18 @@ export class Updater {
     const release = (await res.json()) as GithubRelease
     const version = release.tag_name.replace(/^v/i, '')
     if (!isNewer(version, app.getVersion())) return false
-    this.download = { installer: pickDownload(release, process.platform, process.arch), page: release.html_url }
-    if (process.platform === 'darwin' && version !== this.failedVersion) {
-      const update = pickMacUpdate(release, process.arch)
+    this.download = { installer: pickDownload(release, process.platform, process.arch), page: releasePage(release) }
+    if (process.platform === 'darwin') {
       const bundle = updatableBundle()
-      if (update && bundle) {
+      if (bundle) {
+        // An app that can update itself never falls back to the download: a release without its
+        // signed zip, or one that failed its checks, could be anyone's.
+        if (version === this.failedVersion) return false
+        const update = pickMacUpdate(release, process.arch)
+        if (!update) {
+          console.warn('[updater] no signed macOS update in release', version)
+          return false
+        }
         void this.updateMac(update, version, bundle)
         return true
       }
@@ -269,16 +279,18 @@ export class Updater {
       this.relaunchPath = staged.executable
       app.once('will-quit', () => {
         try {
-          installStaged(staged.app, bundle)
+          installStaged(staged, bundle)
         } catch (err) {
           console.error('[updater] installing the update failed', err)
         }
       })
       void this.ready(version)
     } catch (err) {
-      console.error('[updater] macOS update failed; offering the download instead', err)
-      this.failedVersion = version
-      this.set({ state: 'available', version })
+      // Never offered as a download instead (the release could be anyone's). A download error is
+      // tried again at the next hourly check; an update that failed its checks at the next launch.
+      console.error('[updater] macOS update failed', err)
+      if (err instanceof UpdateRejected) this.failedVersion = version
+      this.set({ state: 'none' })
     }
   }
 }

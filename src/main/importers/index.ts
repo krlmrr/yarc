@@ -233,7 +233,8 @@ async function importArc(browser: Browser, path?: string): Promise<string | unde
     }
   }
   const parsed = parseArcSidebar(json, { archive, palette: SPACE_COLORS, favicon: arcFavicons(src.root) })
-  if (parsed.warnings.length) console.warn(`[import] Arc: ${parsed.warnings.length} warnings\n  ${parsed.warnings.slice(0, 50).join('\n  ')}`)
+  // Only the count: the warnings name the skipped pages' URLs.
+  if (parsed.warnings.length) console.warn(`[import] Arc: skipped ${parsed.warnings.length} items`)
   if (!parsed.spaces.length) throw new Error(`No spaces found in ${src.sidebarFile}`)
 
   const state = browser.state

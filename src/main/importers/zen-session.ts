@@ -13,11 +13,17 @@ const isWebUrl = (url: string | undefined): url is string => !!url && /^(https?|
 
 // ---------------------------------------------------------------- mozLz4
 
+/** Larger than any real session file. */
+const MOZLZ4_MAX = 256 * 1024 * 1024
+
 /** Firefox's .jsonlz4 files: "mozLz40\0", the decompressed size (u32 LE), then one raw LZ4 block. */
 export function readMozLz4(file: Uint8Array): Buffer {
   const buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength)
   if (buf.length < 12 || buf.toString('latin1', 0, 8) !== 'mozLz40\0') throw new Error('Not a mozLz4 file')
-  return lz4Block(buf.subarray(12), buf.readUInt32LE(8))
+  const size = buf.readUInt32LE(8)
+  // LZ4 shrinks data at most about 255 times; a bigger claim is a crafted file asking for gigabytes.
+  if (size > MOZLZ4_MAX || size > (buf.length - 12) * 255 + 64) throw new Error('Corrupt mozLz4 data')
+  return lz4Block(buf.subarray(12), size)
 }
 
 function lz4Block(src: Buffer, size: number): Buffer {

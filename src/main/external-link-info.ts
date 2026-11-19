@@ -1,7 +1,42 @@
 // What to tell the user about a link to another app. Kept free of Electron so unit tests can import it.
 
-/** Schemes web pages must never launch: Windows handlers that have been used to run code (Follina et al.). */
-const BLOCKED = new Set(['ms-msdt', 'search-ms', 'search', 'ms-cxh', 'ms-cxh-full', 'ms-officecmd', 'ms-appinstaller'])
+/**
+ * Schemes web pages must never launch: Windows handlers that have been used to run code (Follina
+ * et al.), Chrome's own denylist (shell:, vbscript:, hcp:, …), network file systems that would
+ * mount a server the page names (smb:, afp:, nfs:), and schemes that are the browser's own.
+ */
+const BLOCKED = new Set([
+  'ms-msdt',
+  'search-ms',
+  'search',
+  'ms-cxh',
+  'ms-cxh-full',
+  'ms-officecmd',
+  'ms-appinstaller',
+  'afp',
+  'cifs',
+  'data',
+  'disk',
+  'disks',
+  'file',
+  'hcp',
+  'ie.http',
+  'javascript',
+  'livescript',
+  'mhtml',
+  'mocha',
+  'ms-help',
+  'ms-its',
+  'nfs',
+  'res',
+  'shell',
+  'smb',
+  'vbscript',
+  'view-source',
+  'vnd.ms.radio',
+  'wysiwyg',
+  'yarc'
+])
 
 const APPS: Record<string, string> = {
   mailto: 'your email app',

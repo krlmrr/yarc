@@ -21,6 +21,12 @@ test('Windows handlers that have been abused to run code are refused', () => {
   }
 })
 
+test('Chrome\'s refused schemes, network shares and YARC\'s own scheme are refused', () => {
+  for (const url of ['shell:startup', 'vbscript:msgbox(1)', 'hcp://system/x', 'smb://evil.example/share', 'afp://evil.example/x', 'yarc://ui/index.html']) {
+    assert.equal(externalLinkInfo(url, 'https://evil.example/').blocked, true, url)
+  }
+})
+
 test('pages without a web origin (file:, about:) show no site and are never always-allowed', () => {
   const info = externalLinkInfo('mailto:a@b.c', 'file:///C:/page.html')
   assert.equal(info.site, '')

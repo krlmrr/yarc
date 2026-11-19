@@ -28,6 +28,37 @@ export interface SitePermissionRow {
   until?: number
 }
 
+/**
+ * The origin a permission is asked and stored for: a web page's origin, or an extension's.
+ * Anything else (file:, data:, about:, sandboxed frames) has no origin to remember an answer
+ * for, so it gets '' and is refused.
+ */
+export function permissionOrigin(url: string): string {
+  try {
+    const u = new URL(url)
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin
+    if (u.protocol === 'chrome-extension:' && u.host) return `chrome-extension://${u.host}`
+  } catch {}
+  return ''
+}
+
+/** Every permission key a profile can store an answer for (Settings > Site Permissions). */
+export const PERMISSION_KEYS = [
+  'notifications',
+  'media:video',
+  'media:audio',
+  'geolocation',
+  'clipboard-read',
+  'display-capture',
+  'midi',
+  'midiSysex',
+  'idle-detection',
+  'hid',
+  'serial',
+  'usb',
+  'window-management'
+] as const
+
 /** The site as people know it: "meet.google.com", "localhost:8765"; other origins as they are. */
 export function siteName(origin: string): string {
   try {
@@ -52,7 +83,8 @@ export function permissionLabel(key: string): string {
     'idle-detection': 'Idle detection',
     hid: 'HID devices',
     serial: 'Serial ports',
-    usb: 'USB devices'
+    usb: 'USB devices',
+    'window-management': 'Window management'
   }
   return labels[key] ?? key
 }
@@ -85,6 +117,8 @@ export function promptText(permission: string, mediaTypes?: ('video' | 'audio')[
       return { icon: 'device', wants: 'connect to serial ports' }
     case 'usb':
       return { icon: 'device', wants: 'connect to USB devices' }
+    case 'window-management':
+      return { icon: 'screen', wants: 'manage windows on all your displays' }
     default:
       return { icon: 'device', wants: `use ${permission}` }
   }

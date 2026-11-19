@@ -263,6 +263,8 @@ export type OverlayMode =
   /** `splitAt`: from a pane's split menu (Add Right Split…), the new tab goes on `side` of `target`. */
   | { kind: 'command'; initial?: string; editCurrent?: boolean; target?: 'tab' | 'split' | 'current'; splitAt?: SplitAt }
   | { kind: 'find' }
+  /** A short message over the top of the page that doesn't take the keyboard (full screen: "Press Esc to exit"). */
+  | { kind: 'notice'; text: string }
   | { kind: 'settings' }
   | { kind: 'library'; tab?: 'archive' | 'history' | 'downloads' | 'spaces' }
   | { kind: 'space-editor'; spaceId?: ID }

@@ -8,7 +8,7 @@
 // The running app's files stay in place until it quits: a helper process started from a half-
 // replaced bundle would be the wrong version.
 import { app } from 'electron'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -45,21 +45,37 @@ export interface StagedUpdate {
   /** The unpacked .app, for installStaged. */
   app: string
   /**
+   * Its designated requirement, read once it passed its checks: installStaged checks the app
+   * against it again, since it then waited (possibly for days) in the profile folder.
+   */
+  requirement: string
+  /**
    * Its executable once it's installed in place of the running bundle. To relaunch with: it can have
    * another name than the running one's (the Arc Shell → YARC rename), and the bundle keeps its own.
    */
   executable: string
 }
 
-/** Downloads, verifies and unpacks the update. */
+/** The update itself failed a check (signature, contents, code signature): not tried again this run. */
+export class UpdateRejected extends Error {}
+
+/** Downloads, verifies and unpacks the update. Throws UpdateRejected when the download isn't a good update. */
 export async function stageUpdate(update: MacUpdate, version: string, bundle: string): Promise<StagedUpdate> {
   const [zip, signature] = await Promise.all([download(update.url), download(update.signatureUrl)])
   if (!verifyUpdate(update.name, zip, signature.toString('utf8'), UPDATE_PUBLIC_KEY)) {
-    throw new Error(`${update.name} doesn't match its signature`)
+    throw new UpdateRejected(`${update.name} doesn't match its signature`)
   }
+  try {
+    return await unpack(update, zip, version, bundle)
+  } catch (err) {
+    throw new UpdateRejected(`${update.name} failed its checks: ${(err as Error).message}`)
+  }
+}
+
+async function unpack(update: MacUpdate, zip: Buffer, version: string, bundle: string): Promise<StagedUpdate> {
   const dir = stagingDir()
   await cleanUpStaging()
-  await fs.promises.mkdir(dir, { recursive: true })
+  await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 })
   const zipPath = path.join(dir, update.name)
   await fs.promises.writeFile(zipPath, zip)
   const unpacked = path.join(dir, 'new')
@@ -70,7 +86,19 @@ export async function stageUpdate(update: MacUpdate, version: string, bundle: st
   if (apps.length !== 1) throw new Error(`${update.name} holds ${apps.length} apps`)
   const staged = path.join(unpacked, apps[0])
   await checkBundle(staged, bundle, version)
-  return { app: staged, executable: path.join(bundle, 'Contents', 'MacOS', await plistValue(staged, 'CFBundleExecutable')) }
+  return {
+    app: staged,
+    requirement: await designatedRequirement(staged),
+    executable: path.join(bundle, 'Contents', 'MacOS', await plistValue(staged, 'CFBundleExecutable'))
+  }
+}
+
+/** "identifier … and certificate leaf = H\"…\"" for the release certificate; "cdhash H\"…\"" for an ad-hoc signature. */
+async function designatedRequirement(app: string): Promise<string> {
+  const { stdout, stderr } = await run('/usr/bin/codesign', ['-d', '-r-', app])
+  const found = /designated => (.+)/.exec(`${stdout}\n${stderr}`)?.[1]?.trim()
+  if (!found) throw new Error('The update has no designated requirement')
+  return found
 }
 
 /** The new app must be this app, at the expected version, with an intact (ad-hoc) code signature. */
@@ -107,11 +135,13 @@ async function download(url: string): Promise<Buffer> {
  * Puts the staged app where the running one is. Two renames, rolled back if the second fails, so
  * the app is never left half-copied (Node has no rename-swap). Synchronous: it runs in will-quit.
  */
-export function installStaged(staged: string, bundle: string): void {
+export function installStaged(staged: StagedUpdate, bundle: string): void {
+  // Still the app that passed the checks: same signer (or, ad-hoc, the very same code), intact seal.
+  execFileSync('/usr/bin/codesign', ['--verify', '--strict', `-R=${staged.requirement}`, staged.app], { timeout: 30_000, stdio: 'ignore' })
   const replaced = path.join(stagingDir(), 'replaced.app')
   fs.renameSync(bundle, replaced)
   try {
-    fs.renameSync(staged, bundle)
+    fs.renameSync(staged.app, bundle)
   } catch (err) {
     fs.renameSync(replaced, bundle)
     throw err

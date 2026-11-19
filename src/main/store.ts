@@ -1,7 +1,7 @@
 // Persistence of the sidebar/spaces state as one JSON file with atomic, debounced writes.
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { SPACE_COLORS } from '../shared/colors'
 import { upgradeSplit } from '../shared/split'
 import type { PersistedState, Profile, Settings, Space } from '../shared/types'
@@ -108,6 +108,7 @@ export class Store {
       console.error('[store] could not read state, keeping a backup and starting fresh', err)
       try {
         renameSync(this.file, `${this.file}.corrupt-${Date.now()}`)
+        pruneBackups(this.file)
       } catch {}
     }
     return defaultState()
@@ -125,7 +126,15 @@ export class Store {
     this.beforeWrite?.()
     mkdirSync(dirname(this.file), { recursive: true })
     const tmp = `${this.file}.tmp`
-    writeFileSync(tmp, JSON.stringify(this.state))
+    // Only this user can read it (it lists every tab), and it's on disk before it replaces the old
+    // one: a power cut can't leave a truncated state.json, which would start YARC from scratch.
+    const fd = openSync(tmp, 'w', 0o600)
+    try {
+      writeSync(fd, JSON.stringify(this.state))
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
     renameSync(tmp, this.file)
   }
 
@@ -145,4 +154,14 @@ export class Store {
   profile(id: string): Profile | undefined {
     return this.state.profiles.find((p) => p.id === id)
   }
+}
+
+/** Keeps the three newest state.json.corrupt-<time> backups: each holds every tab's URL. */
+function pruneBackups(file: string): void {
+  const dir = dirname(file)
+  const prefix = `${basename(file)}.corrupt-`
+  const backups = readdirSync(dir)
+    .filter((name) => name.startsWith(prefix))
+    .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)))
+  for (const old of backups.slice(3)) rmSync(join(dir, old), { force: true })
 }

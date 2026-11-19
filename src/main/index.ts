@@ -2,19 +2,34 @@ import { app, BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { Browser } from './browser'
+import { askForClientCertificates } from './client-certificates'
 import { Extensions } from './extensions'
 import { installAppMenu, installDockMenu } from './menus'
 import { profileDir } from './profile-dir'
+import { Profiles } from './profiles'
+import { registerUiScheme, serveUi } from './ui-origin'
 import { browserUserAgent, userAgentFor } from './useragent'
+
+// A packaged YARC never opens a DevTools port or pipe: another program could start it with one
+// and read every page and cookie (Chrome refuses it for its default profile too). The fuses in
+// scripts/after-pack.mjs close Node's own --inspect. The end-to-end tests drive an unpackaged build.
+if (app.isPackaged && ['remote-debugging-port', 'remote-debugging-pipe'].some((s) => app.commandLine.hasSwitch(s))) {
+  console.error('YARC does not allow remote debugging')
+  process.exit(1)
+}
 
 // Tests and portable setups can point the profile somewhere else.
 if (process.env.YARC_USER_DATA) app.setPath('userData', process.env.YARC_USER_DATA)
 else app.setPath('userData', profileDir(app.getPath('appData'), app.isPackaged ? 'YARC' : 'YARC (dev)'))
 
 app.userAgentFallback = browserUserAgent(app.userAgentFallback)
+registerUiScheme()
+askForClientCertificates()
 // Pages read navigator.userAgent from their webContents, so switch it as a tab heads to a host that
 // needs another UA. The request that starts the navigation is already sent: profiles.ts fixes its header.
 app.on('web-contents-created', (_e, wc) => {
+  // No page, of any kind, gets a <webview> (it could carry its own preload and preferences).
+  wc.on('will-attach-webview', (e) => e.preventDefault())
   wc.on('did-start-navigation', (e) => {
     if (!e.isMainFrame || e.isSameDocument) return
     const ua = userAgentFor(e.url, wc.session.getUserAgent())
@@ -104,6 +119,8 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
+    Profiles.purgeDeleted()
+    serveUi()
     Extensions.prepareUiSession()
     const b = new Browser()
     await b.restoreSessions()

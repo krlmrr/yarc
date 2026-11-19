@@ -17,7 +17,8 @@ export default defineConfig({
   },
   preload: {
     build: {
-      externalizeDeps: true,
+      // Sandboxed preloads can only require('electron'): bundle the rest.
+      externalizeDeps: { exclude: ['electron-chrome-extensions'] },
       rollupOptions: { input: { ui: resolve('src/preload/ui.ts'), 'extension-browser': resolve('src/preload/extension-browser.ts') } }
     }
   },

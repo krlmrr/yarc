@@ -42,14 +42,26 @@ export function isNewer(latest: string, current: string): boolean {
   return compareVersions(latest, current) > 0
 }
 
+/** Where YARC's releases are. Links from GitHub's answer are only opened or fetched when they point here. */
+export const RELEASES_PAGE = 'https://github.com/yenebeb/yarc/releases'
+
+export function isReleaseUrl(url: string): boolean {
+  return typeof url === 'string' && url.startsWith(`${RELEASES_PAGE}/`)
+}
+
+/** The release's page, or the list of releases when GitHub's answer points somewhere else. */
+export function releasePage(release: GithubRelease): string {
+  return isReleaseUrl(release.html_url) ? release.html_url : RELEASES_PAGE
+}
+
 /** electron-builder names them YARC-<version>-<arch>.dmg / .AppImage (see electron-builder.yml). */
 const INSTALLER_EXT: Record<string, string> = { darwin: 'dmg', linux: 'AppImage' }
 
 /** The installer for this platform and CPU, or the release page when there isn't one. */
 export function pickDownload(release: GithubRelease, platform: string, arch: string): string {
   const ext = INSTALLER_EXT[platform]
-  const asset = ext ? release.assets.find((a) => a.name.endsWith(`-${arch}.${ext}`)) : undefined
-  return asset ? asset.browser_download_url : release.html_url
+  const asset = ext ? release.assets.find((a) => a.name.endsWith(`-${arch}.${ext}`) && isReleaseUrl(a.browser_download_url)) : undefined
+  return asset ? asset.browser_download_url : releasePage(release)
 }
 
 /** The self-update zip for a Mac (electron-builder.yml names it YARC-<version>-<arch>-mac.zip) and its signature. */
@@ -60,8 +72,8 @@ export interface MacUpdate {
 }
 
 export function pickMacUpdate(release: GithubRelease, arch: string): MacUpdate | undefined {
-  const zip = release.assets.find((a) => a.name.endsWith(`-${arch}-mac.zip`))
-  const signature = zip && release.assets.find((a) => a.name === `${zip.name}.sig`)
+  const zip = release.assets.find((a) => a.name.endsWith(`-${arch}-mac.zip`) && isReleaseUrl(a.browser_download_url))
+  const signature = zip && release.assets.find((a) => a.name === `${zip.name}.sig` && isReleaseUrl(a.browser_download_url))
   if (!zip || !signature) return undefined
   return { name: zip.name, url: zip.browser_download_url, signatureUrl: signature.browser_download_url }
 }

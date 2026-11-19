@@ -3,7 +3,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
-  ipcMain,
+  dialog,
   nativeTheme,
   screen,
   shell,
@@ -33,6 +33,7 @@ import type {
   PinnedNode,
   PinnedTab,
   Rect,
+  Settings,
   Space,
   Split,
   SplitAt,
@@ -41,10 +42,12 @@ import type {
 } from '../shared/types'
 import { appendPane, flipSplit, gather, groupAt, layoutPanes, movePane, newSplitRoot, PANE_BAR, paneIds, placePane, removePane, type Side } from '../shared/split'
 import { isFloating, stepAfter, type TourEvent, type TourStep } from '../shared/tour'
-import { resolveInput } from '../shared/url'
+import { resolveInput, SEARCH_ENGINES } from '../shared/url'
+import { PERMISSION_KEYS, permissionOrigin } from '../shared/permissions'
 import { AdBlock, hostOf } from './adblock'
 import { recentChanges, startupScreen, type Changelog } from './changelog'
 import { openInChrome } from './chrome'
+import { DownloadBurst, isDangerous, markFromInternet } from './downloads'
 import { Extensions } from './extensions'
 import { runImport } from './importers'
 import { LittleWindow } from './little'
@@ -55,6 +58,7 @@ import { PROMPT_WIDTH, PromptView, type PromptAnchor } from './prompt-view'
 import { search, suggest } from './search'
 import { incognitoState, newId, SPACE_COLORS, Store } from './store'
 import { LiveTab, type OpenDisposition, type TabHost } from './tab'
+import { handleUi } from './ui-origin'
 import { Updater } from './updater'
 import { MainWindow, PAD, type ViewSlot } from './window'
 import { applyView, captureView, cascade, inAnyView, newView, stateForView, viewFromState } from './window-state'
@@ -248,7 +252,7 @@ export class Browser implements TabHost {
   /** No panel in front of the page: an empty overlay, or only a floating tour card. */
   private pageInFront(): boolean {
     const mode = this.window.overlayMode
-    return mode.kind === 'none' || (mode.kind === 'tour' && isFloating(mode.step))
+    return mode.kind === 'none' || mode.kind === 'notice' || (mode.kind === 'tour' && isFloating(mode.step))
   }
 
   /**
@@ -447,8 +451,18 @@ export class Browser implements TabHost {
     }
   }
 
+  private downloadBurst = new DownloadBurst()
+
   private onProfileCreated(rt: ProfileRuntime): void {
-    rt.session.on('will-download', (_e, item) => {
+    rt.session.on('will-download', (e, item, wc) => {
+      const site = hostOf(wc && !wc.isDestroyed() ? wc.getURL() : item.getURL())
+      // Like Chrome, only downloads the page starts on its own count: a user saving several attachments isn't held back.
+      const tab = wc ? [...this.live.values()].find((t) => t.wc === wc) : undefined
+      if (tab && !tab.userActivated && !this.downloadBurst.allow(`${rt.id}|${site}`)) {
+        e.preventDefault()
+        this.toast(`Blocked more downloads from ${site || 'this page'}`)
+        return
+      }
       const info: DownloadItemInfo = {
         id: newId(),
         filename: item.getFilename(),
@@ -472,6 +486,7 @@ export class Browser implements TabHost {
       item.once('done', (_ev, state) => {
         info.state = state
         info.received = item.getReceivedBytes()
+        if (state === 'completed') markFromInternet(info.path, info.url)
         if (state === 'completed') this.toast(`Downloaded ${info.filename}`)
         this.emitSoon()
       })
@@ -713,6 +728,11 @@ export class Browser implements TabHost {
       }
       case 'split-drop':
         return this.cur.layout.content
+      case 'notice': {
+        const c = this.cur.layout.content
+        const w = Math.min(440, c.width - 24)
+        return { x: Math.round(c.x + (c.width - w) / 2), y: c.y + 16, width: w, height: 44 }
+      }
       case 'find': {
         const c = this.cur.layout.content
         const w = Math.min(380, c.width - 16)
@@ -906,6 +926,11 @@ export class Browser implements TabHost {
   onPeekChanged(tab: LiveTab, change: { url?: string; navigated?: boolean }): void {
     if (change.navigated && change.url) this.recordHistory(tab, (h) => h.visit(change.url!, tab.wc.getTitle()))
     this.emitSoon()
+  }
+
+  onPopupBlocked(tab: LiveTab, url: string): void {
+    if (this.winOf(tab) !== this.cur) return
+    this.toast(`Blocked a pop-up from ${hostOf(tab.wc.getURL()) || 'this page'}${hostOf(url) ? ` to ${hostOf(url)}` : ''}`)
   }
 
   /** Links from pinned tabs and favorites to other sites open in Peek, like Arc. */
@@ -1679,7 +1704,7 @@ export class Browser implements TabHost {
         this.tour = undefined
         return this.setOverlay({ kind: 'none' })
       case 'settings': {
-        Object.assign(this.state.settings, a.patch)
+        Object.assign(this.state.settings, settingsPatch(this.state.settings, a.patch))
         this.syncAdblock()
         if (a.patch.theme) nativeTheme.themeSource = a.patch.theme
         if (isMac && a.patch.sidebarVisible !== undefined) this.window.win.setWindowButtonVisibility(a.patch.sidebarVisible)
@@ -1688,6 +1713,7 @@ export class Browser implements TabHost {
         return this.changed()
       }
       case 'searchEngine':
+        if (!Object.hasOwn(SEARCH_ENGINES, a.engine)) return
         this.state.settings.searchEngine = a.engine
         return this.changed()
       case 'littleArc':
@@ -1714,8 +1740,23 @@ export class Browser implements TabHost {
       case 'downloadOpen': {
         const d = this.downloads.find((x) => x.id === a.id)
         if (!d) return
-        if (a.reveal) shell.showItemInFolder(d.path)
-        else void shell.openPath(d.path)
+        if (a.reveal) return shell.showItemInFolder(d.path)
+        if (d.state !== 'completed') return
+        if (isDangerous(d.filename)) {
+          const from = hostOf(d.url)
+          const { response } = await dialog.showMessageBox(this.window.win, {
+            type: 'warning',
+            title: 'YARC',
+            noLink: true,
+            message: `Open “${d.filename}”?`,
+            detail: `This kind of file can run programs on your computer${from ? `. It came from ${from}` : ''}. Only open it if you trust where it came from.`,
+            buttons: ['Cancel', 'Open'],
+            defaultId: 0,
+            cancelId: 0
+          })
+          if (response !== 1) return
+        }
+        void shell.openPath(d.path)
         return
       }
       case 'downloadsClear':
@@ -1761,6 +1802,9 @@ export class Browser implements TabHost {
         return this.changed()
       }
       case 'sitePermission': {
+        if (!this.store.profile(a.profileId) || typeof a.origin !== 'string' || typeof a.key !== 'string') return
+        // Any stored row can be forgotten; only a web or extension origin can be allowed or blocked.
+        if (a.setting !== 'reset' && (permissionOrigin(a.origin) !== a.origin || !(PERMISSION_KEYS as readonly string[]).includes(a.key) || !['allow', 'block'].includes(a.setting))) return
         const decisions = this.profiles.decisions(a.profileId)
         if (a.setting === 'reset') decisions.reset(a.origin, a.key)
         else decisions.set(a.origin, a.key, a.setting)
@@ -1853,6 +1897,16 @@ export class Browser implements TabHost {
     const win = this.window.win
     if (on !== win.isFullScreen()) win.setFullScreen(on)
     this.layout()
+    // A page in full screen could draw a fake browser or system: say whose page it is and how to leave.
+    if (on && this.pageInFront()) {
+      const site = hostOf(tab.wc.getURL())
+      const notice: OverlayMode = { kind: 'notice', text: `${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit` }
+      this.setOverlay(notice, false)
+      const w = this.cur
+      setTimeout(() => {
+        if (w.open && this.wins.includes(w)) this.on(w, () => this.window.overlayMode === notice && this.setOverlay({ kind: 'none' }, false))
+      }, 3500)
+    } else if (!on && this.window.overlayMode.kind === 'notice') this.setOverlay({ kind: 'none' }, false)
   }
 
   onFoundInPage(tab: LiveTab, result: Result): void {
@@ -1982,23 +2036,23 @@ export class Browser implements TabHost {
         }
         if (b.ownsLittle(e.sender)) return b
       }
-      return this
+      throw new Error('IPC from a view no window owns')
     }
-    ipcMain.handle(IPC.action, (e, action: Action) => of(e).dispatch(action))
-    ipcMain.handle(IPC.getState, (e) => of(e).snapshot())
-    ipcMain.handle(IPC.getOverlay, (e) => of(e).window.overlayMode)
-    ipcMain.handle(IPC.search, (e, q: string) => search(of(e), q))
-    ipcMain.handle(IPC.suggest, (e, q: string) => suggest(of(e), q))
-    ipcMain.handle(IPC.history, (e, q: string, offset: number) => {
+    handleUi(IPC.action, (e, action: Action) => of(e).dispatch(action))
+    handleUi(IPC.getState, (e) => of(e).snapshot())
+    handleUi(IPC.getOverlay, (e) => of(e).window.overlayMode)
+    handleUi(IPC.search, (e, q: string) => search(of(e), String(q)))
+    handleUi(IPC.suggest, (e, q: string) => suggest(of(e), String(q)))
+    handleUi(IPC.history, (e, q: string, offset: number) => {
       const b = of(e)
-      return b.profiles.get(b.space.profileId).history.recent(200, offset, q)
+      return b.profiles.get(b.space.profileId).history.recent(200, Math.max(0, Math.floor(Number(offset) || 0)), String(q ?? ''))
     })
-    ipcMain.handle(IPC.historyDelete, (e, url: string) => {
+    handleUi(IPC.historyDelete, (e, url: string) => {
       const b = of(e)
-      return b.profiles.get(b.space.profileId).history.deleteUrl(url)
+      return b.profiles.get(b.space.profileId).history.deleteUrl(String(url))
     })
-    ipcMain.handle(IPC.focus, (e) => e.sender.focus())
-    ipcMain.handle(IPC.littleOp, (e, op: LittleOp, at?: LittleAnchor) => {
+    handleUi(IPC.focus, (e) => e.sender.focus())
+    handleUi(IPC.littleOp, (e, op: LittleOp, at?: LittleAnchor) => {
       for (const l of of(e).littles) if (l.win.webContents === e.sender) return l.op(op, at)
     })
   }
@@ -2073,4 +2127,29 @@ function uniquePath(dir: string, filename: string): string {
   let candidate = join(dir, filename)
   for (let i = 1; existsSync(candidate); i++) candidate = join(dir, `${base} (${i})${ext}`)
   return candidate
+}
+
+const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
+  theme: ['system', 'light', 'dark'],
+  searchEngine: Object.keys(SEARCH_ENGINES)
+}
+
+/** The part of a Settings change from the UI that fits: known keys, each with the type (and value set) it has now. */
+function settingsPatch(current: Settings, patch: unknown): Partial<Settings> {
+  const clean: Record<string, unknown> = {}
+  if (!patch || typeof patch !== 'object') return clean
+  for (const [key, value] of Object.entries(patch)) {
+    if (!Object.hasOwn(current, key)) continue
+    const now = (current as unknown as Record<string, unknown>)[key]
+    if (Array.isArray(now)) {
+      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) clean[key] = value
+      continue
+    }
+    if (typeof value !== typeof now) continue
+    if (typeof value === 'number' && !Number.isFinite(value)) continue
+    const allowed = ENUMS[key as keyof Settings]
+    if (allowed && !allowed.includes(value as string)) continue
+    clean[key] = value
+  }
+  return clean as Partial<Settings>
 }

@@ -113,8 +113,12 @@ export function listProfiles(userDataDir: string): ChromiumProfile[] {
     .filter((p) => existsSync(join(p.path, 'History')) || existsSync(join(p.path, 'Bookmarks')))
 }
 
-/** Runs `read` on a temp copy of a SQLite database and its -wal/-journal, so a running browser's files are never opened. */
-export async function readDatabaseCopy<T>(src: string, read: (db: DatabaseSync) => T): Promise<T> {
+/**
+ * Runs `read` on a temp copy of a SQLite database and its -wal/-journal, so a running browser's
+ * files are never opened. The `tables` it reads must be plain tables: a crafted file could make
+ * them views that never finish (a recursive query) and hang YARC.
+ */
+export async function readDatabaseCopy<T>(src: string, tables: string[], read: (db: DatabaseSync) => T): Promise<T> {
   const tmp = await mkdtemp(join(tmpdir(), 'yarc-import-'))
   try {
     const copy = join(tmp, basename(src))
@@ -129,6 +133,11 @@ export async function readDatabaseCopy<T>(src: string, read: (db: DatabaseSync) 
     const open = (readOnly: boolean): T => {
       const db = new DatabaseSync(copy, { readOnly })
       try {
+        db.exec('PRAGMA trusted_schema = OFF')
+        const kind = db.prepare('SELECT type FROM sqlite_master WHERE name = ?')
+        for (const table of tables) {
+          if ((kind.get(table) as { type?: string } | undefined)?.type !== 'table') throw new Error(`${basename(src)} has no ${table} table`)
+        }
         return read(db)
       } finally {
         db.close()
@@ -149,7 +158,7 @@ export async function readDatabaseCopy<T>(src: string, read: (db: DatabaseSync) 
 export async function readHistory(profileDir: string, limit = 50_000): Promise<ImportedVisit[]> {
   const src = join(profileDir, 'History')
   if (!existsSync(src)) return []
-  return readDatabaseCopy(src, (db) => {
+  return readDatabaseCopy(src, ['urls', 'visits'], (db) => {
     const cols = db.prepare('PRAGMA table_info(urls)').all() as { name: string }[]
     const hidden = cols.some((c) => c.name === 'hidden') ? 'AND u.hidden = 0' : ''
     const rows = db
@@ -183,14 +192,14 @@ function convertBookmarks(nodes: BookmarkNode[] | undefined, now: number, depth 
   const out: PinnedNode[] = []
   for (const n of nodes) {
     if (n?.type === 'folder') {
-      const folder: PinnedFolder = { kind: 'folder', id: randomUUID(), name: n.name?.trim() || 'Untitled folder', open: false, children: convertBookmarks(n.children, now, depth + 1) }
+      const folder: PinnedFolder = { kind: 'folder', id: randomUUID(), name: (typeof n.name === 'string' && n.name.trim()) || 'Untitled folder', open: false, children: convertBookmarks(n.children, now, depth + 1) }
       out.push(folder)
     } else if (n?.type === 'url' && typeof n.url === 'string' && /^(https?|file):/i.test(n.url)) {
       out.push({
         kind: 'tab',
         id: randomUUID(),
         url: n.url,
-        title: n.name?.trim() || n.url,
+        title: (typeof n.name === 'string' && n.name.trim()) || n.url,
         savedUrl: n.url,
         lastActive: webkitToMs(n.date_last_used) ?? webkitToMs(n.date_added) ?? now
       })

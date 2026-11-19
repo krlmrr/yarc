@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { isFloating } from '../shared/tour'
 import type { OverlayMode } from '../shared/types'
 import type { PromptView } from './prompt-view'
+import { guardUi, uiOrigin, uiPageUrl } from './ui-origin'
 
 export const PAD = 8
 
@@ -22,21 +23,23 @@ export interface ViewSlot {
 
 export type RendererPage = 'index' | 'overlay' | 'little' | 'prompt'
 
-export function rendererUrl(page: RendererPage): { url?: string; file?: string } {
-  const dev = process.env.ELECTRON_RENDERER_URL
-  if (dev) return { url: `${dev}/${page}.html` }
-  return { file: join(__dirname, `../renderer/${page}.html`) }
-}
-
 export function loadRenderer(wc: WebContents, page: RendererPage): void {
-  const target = rendererUrl(page)
-  void (target.url ? wc.loadURL(target.url) : wc.loadFile(target.file!))
+  guardUi(wc)
+  void wc.loadURL(uiPageUrl(page))
 }
 
 export const preloadPath = (): string => join(__dirname, '../preload/ui.js')
 
+/** YARC's own pages: sandboxed like tabs; the preload tells them apart from web pages by origin. */
 export function uiWebPreferences() {
-  return { preload: preloadPath(), sandbox: false, contextIsolation: true, nodeIntegration: false, spellcheck: false }
+  return {
+    preload: preloadPath(),
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+    spellcheck: false,
+    additionalArguments: [`--yarc-ui-origin=${uiOrigin()}`]
+  }
 }
 
 function onSomeDisplay(r: Rectangle): boolean {
@@ -189,7 +192,7 @@ export class MainWindow {
     this.overlayAttached = true
     this.raiseOverlay()
     // Peek keeps the focus on its page, and drop zones and a floating tour card on whatever had it.
-    const keepFocus = mode.kind === 'sidebar' || mode.kind === 'peek' || mode.kind === 'split-drop' || (mode.kind === 'tour' && isFloating(mode.step))
+    const keepFocus = mode.kind === 'sidebar' || mode.kind === 'notice' || mode.kind === 'peek' || mode.kind === 'split-drop' || (mode.kind === 'tour' && isFloating(mode.step))
     if (!keepFocus) this.overlay.webContents.focus()
   }
 
