@@ -456,7 +456,9 @@ export class Browser implements TabHost {
   private onProfileCreated(rt: ProfileRuntime): void {
     rt.session.on('will-download', (e, item, wc) => {
       const site = hostOf(wc && !wc.isDestroyed() ? wc.getURL() : item.getURL())
-      if (!this.downloadBurst.allow(`${rt.id}|${site}`)) {
+      // Like Chrome, only downloads the page starts on its own count: a user saving several attachments isn't held back.
+      const tab = wc ? [...this.live.values()].find((t) => t.wc === wc) : undefined
+      if (tab && !tab.userActivated && !this.downloadBurst.allow(`${rt.id}|${site}`)) {
         e.preventDefault()
         this.toast(`Blocked more downloads from ${site || 'this page'}`)
         return
@@ -1800,8 +1802,9 @@ export class Browser implements TabHost {
         return this.changed()
       }
       case 'sitePermission': {
-        if (!this.store.profile(a.profileId) || permissionOrigin(a.origin) !== a.origin) return
-        if (!(PERMISSION_KEYS as readonly string[]).includes(a.key) || !['allow', 'block', 'reset'].includes(a.setting)) return
+        if (!this.store.profile(a.profileId) || typeof a.origin !== 'string' || typeof a.key !== 'string') return
+        // Any stored row can be forgotten; only a web or extension origin can be allowed or blocked.
+        if (a.setting !== 'reset' && (permissionOrigin(a.origin) !== a.origin || !(PERMISSION_KEYS as readonly string[]).includes(a.key) || !['allow', 'block'].includes(a.setting))) return
         const decisions = this.profiles.decisions(a.profileId)
         if (a.setting === 'reset') decisions.reset(a.origin, a.key)
         else decisions.set(a.origin, a.key, a.setting)
@@ -1897,10 +1900,11 @@ export class Browser implements TabHost {
     // A page in full screen could draw a fake browser or system: say whose page it is and how to leave.
     if (on && this.pageInFront()) {
       const site = hostOf(tab.wc.getURL())
-      this.setOverlay({ kind: 'notice', text: `${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit` }, false)
+      const notice: OverlayMode = { kind: 'notice', text: `${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit` }
+      this.setOverlay(notice, false)
       const w = this.cur
       setTimeout(() => {
-        if (w.open && this.wins.includes(w)) this.on(w, () => this.window.overlayMode.kind === 'notice' && this.setOverlay({ kind: 'none' }, false))
+        if (w.open && this.wins.includes(w)) this.on(w, () => this.window.overlayMode === notice && this.setOverlay({ kind: 'none' }, false))
       }, 3500)
     } else if (!on && this.window.overlayMode.kind === 'notice') this.setOverlay({ kind: 'none' }, false)
   }

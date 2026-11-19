@@ -32,8 +32,14 @@ export interface TabHost {
   onPopupBlocked?(tab: LiveTab, url: string): void
 }
 
-/** How long a click or key press lets a page open windows, like Chromium's transient user activation. */
+/** How long a click or key press counts as the user's doing, like Chromium's transient user activation. */
 const ACTIVATION_MS = 5000
+/**
+ * A page that opened a window without the user's input can't open another for this long. Clicks in
+ * a cross-site frame (a "Sign in with Google" button) don't reach the tab's input events, so one
+ * such window is always allowed; the blocker stops pop-up floods, not single sign-in windows.
+ */
+const UNREQUESTED_POPUP_MS = 30_000
 
 function originOf(url: string): string {
   try {
@@ -64,8 +70,15 @@ export class LiveTab {
   crashed = false
   /** When the user last clicked in the page; navigations right after it are link clicks, not redirects. */
   private lastClick = 0
-  /** When the user last clicked or pressed a key in the page: what lets it open a window. */
+  /** When the user last clicked or pressed a key in the page. */
   private lastActivation = 0
+  /** When the page last opened a window without the user's input. */
+  private lastUnrequestedPopup = 0
+
+  /** Whether the user clicked or typed in the page just now. */
+  get userActivated(): boolean {
+    return Date.now() - this.lastActivation < ACTIVATION_MS
+  }
 
   constructor(
     public host: TabHost,
@@ -203,12 +216,12 @@ export class LiveTab {
     })
     wc.on('input-event', (_e, input) => {
       if (input.type === 'mouseUp') this.lastClick = Date.now()
-      if (input.type === 'mouseUp' || input.type === 'keyDown' || input.type === 'rawKeyDown' || input.type === 'touchEnd') this.lastActivation = Date.now()
+      if (input.type === 'mouseDown' || input.type === 'mouseUp' || input.type === 'keyDown' || input.type === 'rawKeyDown' || input.type === 'touchEnd') this.lastActivation = Date.now()
     })
     wc.on('will-navigate', (e, url) => {
       if (!WEB_SCHEMES.test(url)) {
         e.preventDefault()
-        void openExternalLink(wc, url)
+        void openExternalLink(wc, url, this.userActivated)
         return
       }
       const clicked = Date.now() - this.lastClick < 1000
@@ -216,13 +229,16 @@ export class LiveTab {
     })
     wc.setWindowOpenHandler(({ url, disposition, features }) => {
       if (!WEB_SCHEMES.test(url)) {
-        void openExternalLink(wc, url)
+        void openExternalLink(wc, url, this.userActivated)
         return { action: 'deny' }
       }
-      // A pop-up blocker: only a click or key press just before lets a page open windows.
-      if (Date.now() - this.lastActivation > ACTIVATION_MS) {
-        this.host.onPopupBlocked?.(this, url)
-        return { action: 'deny' }
+      // A pop-up blocker for floods: without a click or key press just before, one window per half minute.
+      if (!this.userActivated) {
+        if (Date.now() - this.lastUnrequestedPopup < UNREQUESTED_POPUP_MS) {
+          this.host.onPopupBlocked?.(this, url)
+          return { action: 'deny' }
+        }
+        this.lastUnrequestedPopup = Date.now()
       }
       // Real popups (OAuth/SSO windows opened with size features) stay popups so window.opener works.
       if (disposition === 'new-window' && features) {
@@ -285,7 +301,8 @@ function wirePopup(win: BrowserWindow, session: Session): void {
   show()
 }
 
-const FAVICON_MAX = 100_000
+/** Larger icons stay URLs: each data: URL is stored with its tab and sent to the UI with every update. */
+const FAVICON_MAX = 16_000
 const IMAGE_TYPES: Record<string, string> = { ico: 'image/x-icon', png: 'image/png', svg: 'image/svg+xml', gif: 'image/gif', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
 
 /**

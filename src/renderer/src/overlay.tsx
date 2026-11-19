@@ -51,7 +51,8 @@ function App() {
       return <FindBar key={key} />
     case 'notice':
       return (
-        <div className="notice" role="status">
+        // A click on it (it covers a strip of the page) hands the page back, keyboard included.
+        <div className="notice" role="status" onMouseDown={() => dispatch({ type: 'overlay', mode: { kind: 'none' } })}>
           {mode.text}
         </div>
       )

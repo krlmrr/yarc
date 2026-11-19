@@ -19,8 +19,8 @@ export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuP
 
   if (p.linkURL) {
     // These load from the main process, which Chromium doesn't stop from opening file: and other
-    // local URLs a page could never navigate to itself: only web links open.
-    if (WEB_LINK.test(p.linkURL)) {
+    // local URLs a web page could never navigate to itself: web links, and a local page's own file: links.
+    if (WEB_LINK.test(p.linkURL) || (/^file:/i.test(p.linkURL) && /^file:/i.test(p.pageURL))) {
       items.push(
         { label: 'Open Link in New Tab', click: () => browser.open(p.linkURL, 'background') },
         { label: 'Open Link in Split View', click: () => browser.open(p.linkURL, 'split') },

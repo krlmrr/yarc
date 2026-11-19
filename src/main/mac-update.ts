@@ -56,12 +56,23 @@ export interface StagedUpdate {
   executable: string
 }
 
-/** Downloads, verifies and unpacks the update. */
+/** The update itself failed a check (signature, contents, code signature): not tried again this run. */
+export class UpdateRejected extends Error {}
+
+/** Downloads, verifies and unpacks the update. Throws UpdateRejected when the download isn't a good update. */
 export async function stageUpdate(update: MacUpdate, version: string, bundle: string): Promise<StagedUpdate> {
   const [zip, signature] = await Promise.all([download(update.url), download(update.signatureUrl)])
   if (!verifyUpdate(update.name, zip, signature.toString('utf8'), UPDATE_PUBLIC_KEY)) {
-    throw new Error(`${update.name} doesn't match its signature`)
+    throw new UpdateRejected(`${update.name} doesn't match its signature`)
   }
+  try {
+    return await unpack(update, zip, version, bundle)
+  } catch (err) {
+    throw new UpdateRejected(`${update.name} failed its checks: ${(err as Error).message}`)
+  }
+}
+
+async function unpack(update: MacUpdate, zip: Buffer, version: string, bundle: string): Promise<StagedUpdate> {
   const dir = stagingDir()
   await cleanUpStaging()
   await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 })

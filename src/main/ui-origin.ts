@@ -49,9 +49,16 @@ export function uiPageUrl(page: string): string {
   return `${devServer() ?? ORIGIN}/${page}.html`
 }
 
-/** Before app ready: yarc: behaves like https (secure, standard origin, fetch). */
+/**
+ * Before app ready: yarc: behaves like https (secure, standard origin, fetch). Electron keeps only
+ * the last registerSchemesAsPrivileged call, so this one also repeats electron-chrome-extensions'
+ * crx: (extension icons), which it registers when it's imported.
+ */
 export function registerUiScheme(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }])
+  protocol.registerSchemesAsPrivileged([
+    { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    { scheme: 'crx', privileges: { bypassCSP: true } }
+  ])
 }
 
 /** Serves the built renderer from yarc://ui/ in the default session, the one UI views use. Tabs' profile sessions don't have it. */

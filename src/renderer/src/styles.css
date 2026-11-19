@@ -1122,7 +1122,7 @@ browser-action-list::part(action):hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  pointer-events: none;
+  cursor: default;
 }
 
 .findbar {

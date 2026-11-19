@@ -11,7 +11,7 @@ import { app, BrowserWindow, dialog, net, shell, type MessageBoxOptions } from '
 import type { NsisUpdater } from 'electron-updater'
 import type { ReleaseNotes, UpdateStatus, WaitingUpdate } from '../shared/types'
 import type { Browser } from './browser'
-import { cleanUpStaging, installStaged, stageUpdate, updatableBundle } from './mac-update'
+import { cleanUpStaging, installStaged, stageUpdate, updatableBundle, UpdateRejected } from './mac-update'
 import { installAppMenu } from './menus'
 import { isNewer, LATEST_RELEASE_API, pickDownload, pickMacUpdate, releasePage, type GithubRelease, type MacUpdate } from './release'
 import { isSecurityUpdate, releaseInfoUrl, shouldAsk, startWaiting } from './update-escalation'
@@ -31,7 +31,7 @@ export class Updater {
   /** The ready update has a newer Electron, so Chromium security fixes: the card comes sooner. */
   private security = false
   private checking = false
-  /** macOS: a version that failed to update in place, not retried until the next launch. */
+  /** macOS: a version whose update failed its checks, not retried until the next launch. */
   private failedVersion = ''
   /** macOS: the downloaded update's executable, to relaunch into once it's swapped in. */
   private relaunchPath = ''
@@ -286,9 +286,10 @@ export class Updater {
       })
       void this.ready(version)
     } catch (err) {
-      // Not offered as a download either (the release could be anyone's); the next launch tries again.
+      // Never offered as a download instead (the release could be anyone's). A download error is
+      // tried again at the next hourly check; an update that failed its checks at the next launch.
       console.error('[updater] macOS update failed', err)
-      this.failedVersion = version
+      if (err instanceof UpdateRejected) this.failedVersion = version
       this.set({ state: 'none' })
     }
   }
