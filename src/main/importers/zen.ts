@@ -39,6 +39,8 @@ export function listZenProfiles(root: string): ZenProfile[] {
     return []
   }
   return parseProfilesIni(text)
+    // A network path (\\server\share) would make Windows sign in to that server, handing it the user's password hash.
+    .filter((p) => p.relative || !/^(\\\\|\/\/)/.test(p.path))
     .map((p) => ({ name: p.name, path: p.relative ? join(root, p.path) : p.path }))
     .filter((p) => isZenProfile(p.path))
 }
@@ -87,7 +89,7 @@ export function readZenContainers(dir: string): Map<number, string> {
 export async function readZenHistory(dir: string, limit = 50_000): Promise<ImportedVisit[]> {
   const src = join(dir, 'places.sqlite')
   if (!existsSync(src)) return []
-  return readDatabaseCopy(src, (db) => {
+  return readDatabaseCopy(src, ['moz_places', 'moz_historyvisits'], (db) => {
     const rows = db
       .prepare(
         `SELECT p.url AS url, COALESCE(p.title, '') AS title, v.visit_date / 1000 AS time

@@ -6,8 +6,17 @@ import { askForClientCertificates } from './client-certificates'
 import { Extensions } from './extensions'
 import { installAppMenu, installDockMenu } from './menus'
 import { profileDir } from './profile-dir'
+import { Profiles } from './profiles'
 import { registerUiScheme, serveUi } from './ui-origin'
 import { browserUserAgent, userAgentFor } from './useragent'
+
+// A packaged YARC never opens a DevTools port or pipe: another program could start it with one
+// and read every page and cookie (Chrome refuses it for its default profile too). The fuses in
+// scripts/after-pack.mjs close Node's own --inspect. The end-to-end tests drive an unpackaged build.
+if (app.isPackaged && ['remote-debugging-port', 'remote-debugging-pipe'].some((s) => app.commandLine.hasSwitch(s))) {
+  console.error('YARC does not allow remote debugging')
+  process.exit(1)
+}
 
 // Tests and portable setups can point the profile somewhere else.
 if (process.env.YARC_USER_DATA) app.setPath('userData', process.env.YARC_USER_DATA)
@@ -110,6 +119,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
+    Profiles.purgeDeleted()
     serveUi()
     Extensions.prepareUiSession()
     const b = new Browser()

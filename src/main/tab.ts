@@ -35,6 +35,14 @@ export interface TabHost {
 /** How long a click or key press lets a page open windows, like Chromium's transient user activation. */
 const ACTIVATION_MS = 5000
 
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return '(unparsable URL)'
+  }
+}
+
 const WEB_SCHEMES = /^(https?|file|about|data|blob|chrome-extension|view-source|devtools|chrome):/i
 
 export function createTabView(session: Session): WebContentsView {
@@ -84,7 +92,8 @@ export class LiveTab {
     } catch (err) {
       // ERR_ABORTED (-3) happens on redirects and user navigation; the page handles the rest.
       const code = (err as { errno?: number }).errno
-      if (code !== -3) console.warn('[tab] load failed', url, (err as Error).message)
+      // The origin only: a URL can hold tokens, and an incognito tab's shouldn't reach any log.
+      if (code !== -3) console.warn('[tab] load failed', originOf(url), (err as Error).message)
     }
   }
 
@@ -108,6 +117,8 @@ export class LiveTab {
   }
 
   favicon?: string
+  /** Counts favicon changes, so a slow fetch can't replace a newer icon. */
+  private faviconRequest = 0
   /** The color along the top of the page, for its bar in a split view (Arc tints the bar like the page). */
   barColor?: string
   /** The page `barColor` was read from; set once the tab has been in a split, so later loads read it again. */
@@ -149,8 +160,15 @@ export class LiveTab {
     wc.on('dom-ready', () => void wc.insertCSS(IGNORE_APP_REGIONS, { cssOrigin: 'user' }).catch(() => {}))
     wc.on('page-title-updated', (_e, title) => this.host.onTabChanged(this, { title }))
     wc.on('page-favicon-updated', (_e, icons) => {
-      this.favicon = icons[0]
-      this.host.onTabChanged(this, { favicon: icons[0] })
+      const asked = ++this.faviconRequest
+      void faviconData(this.session, icons[0]).then((data) => {
+        if (asked !== this.faviconRequest || wc.isDestroyed()) return
+        // Incognito favicons never fall back to the URL: the sidebar would fetch it through the
+        // default, persistent session, outside the incognito one.
+        const favicon = data ?? (this.session.isPersistent() && /^https:/i.test(icons[0] ?? '') ? icons[0] : undefined)
+        this.favicon = favicon
+        this.host.onTabChanged(this, { favicon })
+      })
     })
     wc.on('did-start-loading', () => this.host.onTabChanged(this, {}))
     wc.on('did-stop-loading', () => {
@@ -265,6 +283,32 @@ function wirePopup(win: BrowserWindow, session: Session): void {
   })
   wc.on('did-create-window', (child) => wirePopup(child, session))
   show()
+}
+
+const FAVICON_MAX = 100_000
+const IMAGE_TYPES: Record<string, string> = { ico: 'image/x-icon', png: 'image/png', svg: 'image/svg+xml', gif: 'image/gif', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
+
+/**
+ * A page's favicon as a data: URL, fetched with the tab's own session (its cookies, cache and ad
+ * blocking; in memory for incognito), so YARC's UI never loads anything from the network itself.
+ */
+export async function faviconData(session: Session, url: string | undefined): Promise<string | undefined> {
+  if (!url) return undefined
+  if (/^data:image\//i.test(url)) return url.length <= FAVICON_MAX * 1.4 ? url : undefined
+  if (!/^https?:/i.test(url)) return undefined
+  try {
+    const res = await session.fetch(url, { signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) return undefined
+    let type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+    // Servers often send .ico files as text/plain or application/octet-stream.
+    if (!type.startsWith('image/')) type = IMAGE_TYPES[/\.(\w+)$/.exec(new URL(url).pathname)?.[1]?.toLowerCase() ?? ''] ?? ''
+    if (!type) return undefined
+    const body = Buffer.from(await res.arrayBuffer())
+    if (!body.length || body.length > FAVICON_MAX) return undefined
+    return `data:${type};base64,${body.toString('base64')}`
+  } catch {
+    return undefined
+  }
 }
 
 /** The most common color in a BGRA bitmap (colors close together count as one), as `rgb(…)`. */

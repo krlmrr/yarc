@@ -122,7 +122,9 @@ export async function suggest(browser: Browser, query: string): Promise<string[]
         ? `https://api.bing.com/osjson.aspx?query=${encodeURIComponent(q)}`
         : `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(q)}`
   try {
-    const res = await net.fetch(endpoint, { signal: AbortSignal.timeout(1500) })
+    // An incognito window asks through its own in-memory session, never the default one.
+    const fetcher = browser.incognito ? browser.profiles.get(browser.space.profileId).session : net
+    const res = await fetcher.fetch(endpoint, { signal: AbortSignal.timeout(1500) })
     const data = (await res.json()) as [string, string[]]
     return (data[1] ?? []).filter((s) => s.toLowerCase() !== q.toLowerCase()).slice(0, 5)
   } catch {

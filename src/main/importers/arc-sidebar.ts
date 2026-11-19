@@ -117,7 +117,9 @@ export function profileKey(desc: unknown): string {
   const custom = desc.custom
   if (isObj(custom)) {
     for (const v of Object.values(custom)) {
-      if (isObj(v) && str(v.directoryBasename)) return str(v.directoryBasename)!
+      const dir = isObj(v) ? str(v.directoryBasename) : undefined
+      // A folder name inside Arc's User Data, never a path out of it.
+      if (dir && /^[^/\\]+$/.test(dir) && dir !== '.' && dir !== '..') return dir
     }
   }
   return 'Default'

@@ -1,7 +1,7 @@
 // One Electron session per profile: separate cookies, storage, cache, extensions and history.
 import { app, safeStorage, session, type Session, type WebContents } from 'electron'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { History } from './history'
 import { PermissionQueue, type MediaType } from './permission-queue'
 import { SessionCookies, type Cipher } from './session-cookies'
@@ -92,8 +92,8 @@ export class Profiles {
       } catch {}
       d = new SiteDecisions(stored, (data) => {
         try {
-          mkdirSync(this.dir(id), { recursive: true })
-          writeFileSync(`${file}.tmp`, JSON.stringify(data))
+          mkdirSync(this.dir(id), { recursive: true, mode: 0o700 })
+          writeFileSync(`${file}.tmp`, JSON.stringify(data), { mode: 0o600 })
           renameSync(`${file}.tmp`, file)
         } catch (err) {
           console.error('Saving site permissions failed', err)
@@ -148,16 +148,58 @@ export class Profiles {
     return [...this.runtimes.values()]
   }
 
+  /**
+   * Forgets a deleted profile: its site data now (whether or not it was used this run), and its
+   * folders at the next launch (purgeDeleted), when no session has them open.
+   */
   async remove(id: ID): Promise<void> {
     this.siteDecisions.delete(id)
-    if (!this.incognito) rmSync(this.permissionsFile(id), { force: true })
     const rt = this.runtimes.get(id)
-    if (!rt) return
-    rt.history.close()
-    this.sessionCookies.get(id)?.forget()
-    this.sessionCookies.delete(id)
-    await rt.session.clearData()
+    rt?.history.close()
     this.runtimes.delete(id)
+    if (this.incognito) return void (await rt?.session.clearData())
+    rmSync(this.permissionsFile(id), { force: true })
+    this.keepSessionCookies(id).forget()
+    this.sessionCookies.delete(id)
+    Profiles.markDeleted(id)
+    await (rt?.session ?? session.fromPartition(Profiles.partition(id))).clearData()
+  }
+
+  private static deletedFile(): string {
+    return join(app.getPath('userData'), 'Profiles', 'deleted.json')
+  }
+
+  private static markDeleted(id: ID): void {
+    const file = Profiles.deletedFile()
+    let ids: string[] = []
+    try {
+      const stored: unknown = JSON.parse(readFileSync(file, 'utf8'))
+      if (Array.isArray(stored)) ids = stored.filter((x): x is string => typeof x === 'string')
+    } catch {}
+    try {
+      mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
+      writeFileSync(file, JSON.stringify([...new Set([...ids, id])]), { mode: 0o600 })
+    } catch (err) {
+      console.error('[profiles] could not note the deleted profile', err)
+    }
+  }
+
+  /** At launch, before any session: removes the cookies, storage, cache, history and extensions of deleted profiles. */
+  static purgeDeleted(): void {
+    const file = Profiles.deletedFile()
+    let ids: unknown
+    try {
+      ids = JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      return
+    }
+    const userData = app.getPath('userData')
+    for (const id of Array.isArray(ids) ? ids : []) {
+      if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) continue
+      rmSync(join(userData, 'Partitions', `profile-${id}`), { recursive: true, force: true })
+      rmSync(join(userData, 'Profiles', id), { recursive: true, force: true })
+    }
+    rmSync(file, { force: true })
   }
 
   closeAll(): void {

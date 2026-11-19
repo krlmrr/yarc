@@ -1,5 +1,5 @@
 // Browsing history, one SQLite database per profile (node:sqlite, no native modules).
-import { mkdirSync } from 'node:fs'
+import { chmodSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -16,15 +16,25 @@ export interface ImportedVisit {
   time: number
 }
 
+const KEEP_FOR = 365 * 864e5
+
+/** A LIKE pattern matching `text` anywhere, with % and _ in it taken literally (ESCAPE '\\'). */
+function contains(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
+}
+
 export class History {
   private db: DatabaseSync
   /** Pages can still report navigations while the app quits; writes after close are dropped. */
   private closed = false
 
   /** Without a folder (incognito), the history lives in memory and is gone when it closes. */
-  constructor(dir: string | undefined) {
-    if (dir) mkdirSync(dir, { recursive: true })
-    this.db = new DatabaseSync(dir ? join(dir, 'history.sqlite') : ':memory:')
+  constructor(dir: string | undefined, now = Date.now()) {
+    if (dir) mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const file = dir ? join(dir, 'history.sqlite') : ':memory:'
+    this.db = new DatabaseSync(file)
+    // Only this user can read it (SQLite creates it with the default, usually world-readable, mode).
+    if (dir) chmodSync(file, 0o600)
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS urls (
@@ -37,6 +47,14 @@ export class History {
       CREATE INDEX IF NOT EXISTS visits_time ON visits(time);
       CREATE INDEX IF NOT EXISTS urls_last ON urls(last_visit);
     `)
+    this.prune(now)
+  }
+
+  /** Visits older than KEEP_FOR are forgotten (Chrome keeps 90 days; a year here, for imported history). */
+  private prune(now: number): void {
+    const before = now - KEEP_FOR
+    this.db.prepare('DELETE FROM visits WHERE time < ?').run(before)
+    this.db.prepare('DELETE FROM urls WHERE last_visit < ? AND url NOT IN (SELECT url FROM visits)').run(before)
   }
 
   visit(url: string, title: string, time = Date.now()): void {
@@ -56,7 +74,7 @@ export class History {
   }
 
   search(query: string, limit = 8): HistoryEntry[] {
-    const like = `%${query.replace(/[%_]/g, (m) => `\\${m}`)}%`
+    const like = contains(query)
     const weekAgo = Date.now() - 7 * 864e5
     return this.db
       .prepare(
@@ -69,12 +87,12 @@ export class History {
   }
 
   recent(limit = 200, offset = 0, query = ''): (HistoryEntry & { time: number })[] {
-    const like = `%${query}%`
+    const like = contains(query)
     return this.db
       .prepare(
         `SELECT v.url, u.title, u.visit_count AS visitCount, u.last_visit AS lastVisit, v.time FROM visits v
          JOIN urls u ON u.url = v.url
-         WHERE ? = '' OR v.url LIKE ? OR u.title LIKE ?
+         WHERE ? = '' OR v.url LIKE ? ESCAPE '\\' OR u.title LIKE ? ESCAPE '\\'
          ORDER BY v.time DESC LIMIT ? OFFSET ?`
       )
       .all(query, like, like, limit, offset) as unknown as (HistoryEntry & { time: number })[]
