@@ -212,6 +212,13 @@ jobs:
         env:
           MAC_UPDATE_SIGNING_KEY: ${{ secrets.MAC_UPDATE_SIGNING_KEY }}
         run: node --experimental-strip-types scripts/sign-update.mts release/*-mac.zip
+      # Installed Windows copies check the installer the same way (src/main/windows-update.ts), with
+      # the same key: electron-updater's own check only compares it with latest.yml from the same release.
+      - name: Sign the Windows installers
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
+        env:
+          MAC_UPDATE_SIGNING_KEY: ${{ secrets.MAC_UPDATE_SIGNING_KEY }}
+        run: node --experimental-strip-types scripts/sign-update.mts release/YARC-Setup-*.exe
       # A pull request's dry run collects the same files, without uploading them.
       - name: Upload to the draft release
         env:
@@ -221,7 +228,7 @@ jobs:
           shopt -s nullglob
           # Only patterns: nullglob drops one that matches nothing, but keeps a plain path even when
           # the file isn't there (release.json is only written on Linux), and gh then fails on it.
-          files=(release/*.exe release/*.dmg release/*.zip release/*.zip.sig release/*.AppImage release/*.blockmap release/latest*.yml release/release*.json)
+          files=(release/*.exe release/*.dmg release/*.zip release/*.zip.sig release/*.exe.sig release/*.AppImage release/*.blockmap release/latest*.yml release/release*.json)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::error::No installers in release/"
             exit 1

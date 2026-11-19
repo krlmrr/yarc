@@ -1,11 +1,13 @@
-// Signs the macOS update zips that the app's self-updater installs (src/main/update-signature.ts).
+// Signs the update files installed copies check before installing (src/main/update-signature.ts):
+// the macOS zips and the Windows installers.
 //
 //   node --experimental-strip-types scripts/sign-update.mts keygen <private-key-file>
 //     Once: writes a new Ed25519 private key and prints its public key, which goes in UPDATE_PUBLIC_KEY.
-//     The private key file's contents go in the MAC_UPDATE_SIGNING_KEY repository secret.
+//     The private key file's contents go in the MAC_UPDATE_SIGNING_KEY repository secret (named before
+//     Windows used it too).
 //
-//   MAC_UPDATE_SIGNING_KEY=<pem> node --experimental-strip-types scripts/sign-update.mts <zip>...
-//     Writes <zip>.sig next to each zip (the release workflow does this).
+//   MAC_UPDATE_SIGNING_KEY=<pem> node --experimental-strip-types scripts/sign-update.mts <file>...
+//     Writes <file>.sig next to each file (the release workflow does this).
 import { generateKeyPairSync } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -24,13 +26,13 @@ if (args[0] === 'keygen') {
 } else {
   const key = process.env.MAC_UPDATE_SIGNING_KEY
   if (!key) throw new Error('MAC_UPDATE_SIGNING_KEY is not set: the repository secret is missing')
-  // Installed apps only accept zips signed with the key matching the one they were built with.
+  // Installed apps only accept files signed with the key matching the one they were built with.
   if (publicKeyOf(key).trim() !== UPDATE_PUBLIC_KEY.trim()) {
     throw new Error("MAC_UPDATE_SIGNING_KEY doesn't match UPDATE_PUBLIC_KEY in src/main/update-signature.ts")
   }
-  if (args.length === 0) throw new Error('No zips to sign')
-  for (const zip of args) {
-    writeFileSync(`${zip}.sig`, `${signUpdate(basename(zip), readFileSync(zip), key)}\n`)
-    console.log(`Signed ${zip}`)
+  if (args.length === 0) throw new Error('No files to sign')
+  for (const file of args) {
+    writeFileSync(`${file}.sig`, `${signUpdate(basename(file), readFileSync(file), key)}\n`)
+    console.log(`Signed ${file}`)
   }
 }
