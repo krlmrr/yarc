@@ -84,3 +84,13 @@ test('windowsInstallerName and releaseAssetUrl find the installer’s signature'
   assert.equal(name, 'YARC-Setup-0.1.3-x64.exe')
   assert.equal(releaseAssetUrl('0.1.3', `${name}.sig`), url('YARC-Setup-0.1.3-x64.exe.sig'))
 })
+
+test('links outside YARC\'s releases are never offered', () => {
+  const elsewhere = {
+    ...release,
+    html_url: 'file:///Applications/Calculator.app',
+    assets: release.assets.map((a) => ({ ...a, browser_download_url: `https://evil.example/${a.name}` }))
+  }
+  assert.equal(pickDownload(elsewhere, 'darwin', 'arm64'), 'https://github.com/yenebeb/yarc/releases')
+  assert.equal(pickMacUpdate(elsewhere, 'arm64'), undefined)
+})

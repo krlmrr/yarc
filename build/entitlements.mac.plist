@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The hardened runtime's exceptions YARC needs (electron-builder.yml, mac.entitlements).
+     JIT and unsigned executable memory: V8. Library validation off: the self-signed certificate has
+     no Team ID, so the hardened runtime would refuse Electron's own frameworks. Camera and microphone:
+     the hardened runtime blocks them without these. No allow-dyld-environment-variables: that is
+     what keeps other programs from injecting code with DYLD_INSERT_LIBRARIES. -->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

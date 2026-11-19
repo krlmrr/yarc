@@ -84,7 +84,11 @@ mac:
   identity: "-"
   # Release builds: re-signed with CI's self-signed certificate instead (scripts/mac-sign.mjs).
   sign: ./scripts/mac-sign.mjs
-  hardenedRuntime: false # ad-hoc + hardened runtime would need disable-library-validation
+  # The hardened runtime blocks DYLD_INSERT_LIBRARIES and other code injection. Its exceptions
+  # (V8's JIT, frameworks without a Team ID, camera and microphone) are in the entitlements.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   notarize: false
   gatekeeperAssess: false
   minimumSystemVersion: "13.0" # Electron 44+ floor
