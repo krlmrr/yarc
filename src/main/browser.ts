@@ -141,6 +141,14 @@ export class Browser implements TabHost {
   extensionList: Record<ID, ExtensionInfo[]> = {}
   private emitTimer: NodeJS.Timeout | undefined
   readonly littles = new Set<LittleWindow>()
+
+  /**
+   * The Little Windows that are still open. Read this, not `littles`: Electron marks a closing
+   * window destroyed a moment before its 'closed' event takes it off the list.
+   */
+  openLittles(): LittleWindow[] {
+    return [...this.littles].filter((l) => !l.win.isDestroyed())
+  }
   /**
    * The tour's step while it runs. Its card can be out of sight while the user tries a step (the
    * command bar, the peeking sidebar, a tab drag); it comes back when that closes.
@@ -459,7 +467,7 @@ export class Browser implements TabHost {
   /** An incognito window closed: forget its pages, cookies, storage and history. */
   private dispose(): void {
     Browser.all.delete(this)
-    for (const l of this.littles) l.win.close()
+    for (const l of this.openLittles()) l.win.close()
     for (const rt of this.profiles.all()) void rt.session.clearData()
     this.profiles.closeAll()
   }
@@ -914,17 +922,17 @@ export class Browser implements TabHost {
    */
   syncPrompts(): void {
     const queue = this.profiles.permissionQueue
-    // Pages that can show a prompt: tabs, each window's Peek and Little Arc. Anything else (an
+    // Pages that can show a prompt: tabs, each window's Peek and Little Window. Anything else (an
     // extension page, say) has nowhere to ask, so it hears "no".
     const pages = new Set<number>([...this.live.values()].filter((t) => !t.destroyed).map((t) => t.wc.id))
     for (const w of this.wins) if (w.peek && !w.peek.tab.destroyed) pages.add(w.peek.tab.wc.id)
-    for (const l of this.littles) if (l.pageId !== undefined) pages.add(l.pageId)
+    for (const l of this.openLittles()) if (l.pageId !== undefined) pages.add(l.pageId)
     for (const wcId of queue.waitingPages()) {
       if (pages.has(wcId)) continue
       const req = queue.next([wcId])
       if (req) queue.answer(req.id, 'dismiss')
     }
-    for (const l of this.littles) l.syncPrompt(queue)
+    for (const l of this.openLittles()) l.syncPrompt(queue)
     // Each window asks for the pages it shows live.
     for (const w of this.wins) if (w.open) this.on(w, () => this.syncPrompt())
   }
@@ -1040,7 +1048,7 @@ export class Browser implements TabHost {
     this.emitSoon()
   }
 
-  /** Arc's Peek card: nearly the content's height, with room beside it for the buttons. */
+  /** The Peek card: nearly the content's height, with room beside it for the buttons. */
   private peekRects(): { card: Rectangle; local: Rect } {
     const c = this.cur.layout.content
     const margin = Math.round(Math.max(56, c.width * 0.08))
@@ -2045,7 +2053,7 @@ export class Browser implements TabHost {
   }
 
   adoptOpenedPage(opener: LiveTab, options: BrowserWindowConstructorOptions | undefined, disposition: OpenDisposition, url: string): WebContents {
-    // The new tab opens in the opener's window (the current one for a Little Arc page).
+    // The new tab opens in the opener's window (the current one for a Little Window page).
     this.use(this.winOf(opener))
     const openerItem = findItem(this.state, opener.itemId)
     const spaceId = openerItem && openerItem.loc.kind !== 'favorite' ? openerItem.loc.spaceId : this.space.id
@@ -2073,7 +2081,7 @@ export class Browser implements TabHost {
     buildContextMenu(this, tab, params).popup({ window: this.window.win })
   }
 
-  // ---------------------------------------------------------------- Little Arc
+  // ---------------------------------------------------------------- Little Window
 
   openLittle(url?: string, profileId = this.littleProfile(url), bounds?: Rectangle): LittleWindow {
     const little = new LittleWindow(this, this.profiles.get(profileId), url, bounds)
@@ -2083,14 +2091,14 @@ export class Browser implements TabHost {
     return little
   }
 
-  /** The profile a Little Arc page opens in: the one picked for the site, the Settings choice, else the active space's. */
+  /** The profile a Little Window page opens in: the one picked for the site, the Settings choice, else the active space's. */
   private littleProfile(url?: string): ID {
     const known = (id: ID | undefined) => (id && this.store.profile(id) ? id : undefined)
     const s = this.state.settings
     return known(this.state.littleArc.profileByHost[hostOf(url ?? '')]) ?? known(s.littleArcProfileId) ?? this.space.profileId
   }
 
-  /** Reopens a Little Arc page with another profile (the toolbar's profile chip) and remembers that for the site. */
+  /** Reopens a Little Window page with another profile (the toolbar's profile chip) and remembers that for the site. */
   switchLittleProfile(little: LittleWindow, profileId: ID): void {
     const url = little.url
     const host = hostOf(url)
@@ -2111,7 +2119,7 @@ export class Browser implements TabHost {
     return this.state.spaces.find((s) => s.profileId === profileId) ?? this.space
   }
 
-  /** Moves a Little Arc page into the main window as a Today tab, keeping its state. */
+  /** Moves a Little Window page into the main window as a Today tab, keeping its state. */
   adoptLittle(little: LittleWindow, spaceId?: ID): void {
     this.ensureWindow()
     const space = (spaceId && this.store.space(spaceId)) || this.littleTargetSpace(little.profile.id)
@@ -2148,9 +2156,9 @@ export class Browser implements TabHost {
     return this.wins.find((w) => w.open && (w.main.ui === wc || w.main.overlay.webContents === wc))
   }
 
-  /** Whether one of this controller's Little Arc windows is `wc`. */
+  /** Whether one of this controller's Little Windows is `wc`. */
   private ownsLittle(wc: WebContents): boolean {
-    return [...this.littles].some((l) => !l.win.isDestroyed() && l.win.webContents === wc)
+    return this.openLittles().some((l) => l.win.webContents === wc)
   }
 
   /**
@@ -2184,7 +2192,7 @@ export class Browser implements TabHost {
     })
     handleUi(IPC.focus, (e) => e.sender.focus())
     handleUi(IPC.littleOp, (e, op: LittleOp, at?: LittleAnchor) => {
-      for (const l of of(e).littles) if (l.win.webContents === e.sender) return l.op(op, at)
+      for (const l of of(e).openLittles()) if (l.win.webContents === e.sender) return l.op(op, at)
     })
   }
 
