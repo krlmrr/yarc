@@ -60,7 +60,7 @@ import { pauseMedia, probeMedia, toggleMedia } from './media-page'
 import { closeFloating, closed, dismiss, emptyMedia, float, left, minimize, shown, type LeftWith, type MediaState } from './media-state'
 import { Mirror, stillOf } from './mirror'
 import { Peek, sameSite } from './peek'
-import { buildCanvasMenu, buildContextMenu, buildFolderMenu, buildItemMenu, buildSpaceMenu, buildSplitMenu } from './menus'
+import { buildAppMenu, buildCanvasMenu, buildContextMenu, buildFolderMenu, buildItemMenu, buildSpaceMenu, buildSplitMenu } from './menus'
 import { Profiles, type ProfileRuntime } from './profiles'
 import { PROMPT_WIDTH, PromptView, type PromptAnchor } from './prompt-view'
 import { search, suggest } from './search'
@@ -1472,6 +1472,7 @@ export class Browser implements TabHost, FloatingHost {
       name: a.name || 'New Space',
       emoji: a.emoji,
       color: a.color || SPACE_COLORS[this.state.spaces.length % SPACE_COLORS.length],
+      color2: a.color2 || undefined,
       profileId,
       pinned: [],
       today: [],
@@ -1731,6 +1732,7 @@ export class Browser implements TabHost, FloatingHost {
         if (a.name !== undefined) s.name = a.name
         if (a.emoji !== undefined) s.emoji = a.emoji || undefined
         if (a.color) s.color = a.color
+        if (a.color2 !== undefined) s.color2 = a.color2 || undefined
         if (a.profileId && a.profileId !== s.profileId && this.store.profile(a.profileId)) {
           for (const n of spaceItems(this.state, s)) this.dropLive(n.id)
           s.profileId = a.profileId
@@ -1886,6 +1888,8 @@ export class Browser implements TabHost, FloatingHost {
         return buildFolderMenu(this, a.id)?.popup({ window: this.window.win })
       case 'canvasMenu':
         return buildCanvasMenu(this, a.id)?.popup({ window: this.window.win })
+      case 'appMenu':
+        return buildAppMenu(this).popup({ window: this.window.win, x: Math.round(Number(a.x)), y: Math.round(Number(a.y)) })
       case 'renameCanvas':
         this.canvases.rename(a.id, String(a.name))
         return this.changed()

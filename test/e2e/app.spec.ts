@@ -82,6 +82,47 @@ test('starts with a default space and the sidebar', async () => {
   await expect(ui.locator('.space-name')).toContainText('Personal')
 })
 
+test("clicking the current space's icon opens its menu", async () => {
+  const ui = await pageWithUrl('index.html')
+  await app.evaluate(({ Menu }) => {
+    const popup = Menu.prototype.popup
+    Menu.prototype.popup = function (this: Electron.Menu) {
+      ;(globalThis as any).poppedMenu = this.items.map((i) => i.label)
+      Menu.prototype.popup = popup
+    }
+  })
+  await ui.locator('.space-dot.active').click()
+  await expect.poll(() => app.evaluate(() => (globalThis as any).poppedMenu)).toContain('Edit Space…')
+})
+
+test("the space editor's own color picker sets a custom color, and a second color ends the sidebar's gradient", async () => {
+  const s = await space()
+  await dispatch({ type: 'overlay', mode: { kind: 'space-editor', spaceId: s.id } })
+  const overlay = await pageWithUrl('overlay.html')
+  const first = overlay.locator('.color-row').first()
+  const picker = overlay.locator('.color-picker').first()
+  await first.locator('.custom-sw').click()
+  await expect(picker).toBeVisible()
+  await picker.locator('.cp-hex').fill('#336699')
+  await expect(first.locator('.hex')).toHaveText('#336699')
+  await picker.locator('.cp-hue').fill('0')
+  await expect(first.locator('.hex')).toHaveText('#993333')
+  await overlay.locator('.space-editor header').click()
+  await expect(picker).toBeHidden()
+  await expect(first.locator('.custom-sw')).toHaveClass(/\bon\b/)
+
+  await overlay.locator('.add-color').click()
+  const second = overlay.locator('.color-row').nth(1)
+  await second.locator('.sw[title="#3dbb8a"]').click()
+  await overlay.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(async () => [(await space()).color, (await space()).color2]).toEqual(['#993333', '#3dbb8a'])
+  const ui = await pageWithUrl('index.html')
+  await expect.poll(() => ui.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--space-2'))).toBe('#3dbb8a')
+
+  await dispatch({ type: 'updateSpace', id: s.id, color: s.color, color2: '' })
+  await expect.poll(() => ui.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--space-2'))).toBe(s.color)
+})
+
 test('pages start below the native caption buttons on Windows and Linux', async () => {
   const ui = await pageWithUrl('index.html')
   const mac = process.platform === 'darwin'
@@ -95,6 +136,24 @@ test('pages start below the native caption buttons on Windows and Linux', async 
     await expect(ui.locator('.caption-strip')).toHaveCSS('height', '32px')
     await expect(ui.locator('.win-controls')).toHaveCount(0)
   }
+})
+
+test('the menu button opens Settings on Windows and Linux; macOS has the menu bar instead', async () => {
+  const ui = await pageWithUrl('index.html')
+  const button = ui.locator('.topbar button[title="Menu"]')
+  if (process.platform === 'darwin') return expect(button).toHaveCount(0)
+  await app.evaluate(({ Menu }) => {
+    const popup = Menu.prototype.popup
+    Menu.prototype.popup = function (this: Electron.Menu) {
+      ;(globalThis as any).appMenu = this
+      Menu.prototype.popup = popup
+    }
+  })
+  await button.click()
+  await expect.poll(() => app.evaluate(() => !!(globalThis as any).appMenu)).toBe(true)
+  await app.evaluate(() => (globalThis as any).appMenu.items.find((i: Electron.MenuItem) => i.label === 'Settings…').click())
+  await expect.poll(() => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)).toBe('settings')
+  await dispatch({ type: 'overlay', mode: { kind: 'none' } })
 })
 
 test('command bar opens a new tab at the top of Today', async () => {

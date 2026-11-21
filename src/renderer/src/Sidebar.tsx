@@ -326,6 +326,18 @@ function TopBar({ state }: { state: AppState }) {
       <button className="icon-btn" title={`Toggle sidebar (${isMac ? '⌘S' : 'Ctrl+S'})`} onClick={() => dispatch({ type: 'toggleSidebar' })}>
         <Icon name="sidebar" />
       </button>
+      {isMac ? null : (
+        <button
+          className="icon-btn"
+          title="Menu"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            dispatch({ type: 'appMenu', x: r.left, y: r.bottom + 4 })
+          }}
+        >
+          <Icon name="menu" />
+        </button>
+      )}
       <div className="spacer" />
       <button className="icon-btn" disabled={!live?.canGoBack} onClick={() => dispatch({ type: 'back' })} title="Back">
         <Icon name="back" />
@@ -802,7 +814,7 @@ function BottomBar({ ctx }: { ctx: Ctx }) {
               key={s.id}
               className={cx('space-dot', s.id === space.id && 'active', over && 'drop-into')}
               title={s.name}
-              onClick={() => dispatch({ type: 'switchSpace', id: s.id })}
+              onClick={() => dispatch(s.id === space.id ? { type: 'spaceMenu', id: s.id } : { type: 'switchSpace', id: s.id })}
               onContextMenu={() => dispatch({ type: 'spaceMenu', id: s.id })}
               onDragOver={(e) => {
                 e.preventDefault()

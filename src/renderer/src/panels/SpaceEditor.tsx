@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AppState } from '../../../shared/types'
-import { activeSpace, cx, dispatch, isMac } from '../api'
+import { activeSpace, cx, dispatch, isMac, setSpaceColors } from '../api'
 import { Icon } from '../icons'
+import { CustomColor } from './ColorPicker'
 import { firstGrapheme, SPACE_COLORS } from './util'
 import './panels.css'
 
@@ -23,21 +24,22 @@ export function SpaceEditor({ state, close, spaceId }: { state: AppState; close:
   const [emoji, setEmoji] = useState(space?.emoji ?? '')
   const [custom, setCustom] = useState(space?.emoji && !EMOJI.includes(space.emoji) ? space.emoji : '')
   const [color, setColor] = useState(space?.color ?? SPACE_COLORS.find((c) => !used.has(c)) ?? SPACE_COLORS[0])
+  const [color2, setColor2] = useState(space?.color2 ?? '')
   const [profileId, setProfileId] = useState<string>(space?.profileId ?? 'new')
   const [profileName, setProfileName] = useState('')
 
-  // Live-preview the color; on unmount fall back to whatever the active space is by then.
+  // Live-preview the colors; on unmount fall back to whatever the active space is by then.
   const stateRef = useRef(state)
   useEffect(() => {
     stateRef.current = state
   })
   useEffect(() => {
-    if (HEX.test(color)) document.documentElement.style.setProperty('--space', color)
-  }, [color])
+    if (HEX.test(color)) setSpaceColors(color, HEX.test(color2) ? color2 : color)
+  }, [color, color2])
   useEffect(
     () => () => {
-      const s = stateRef.current
-      document.documentElement.style.setProperty('--space', activeSpace(s).color)
+      const s = activeSpace(stateRef.current)
+      setSpaceColors(s.color, s.color2)
     },
     []
   )
@@ -45,19 +47,28 @@ export function SpaceEditor({ state, close, spaceId }: { state: AppState; close:
   const fallbackName = `Space ${state.spaces.length + 1}`
   const usersOf = (id: string) => state.spaces.filter((s) => s.id !== space?.id && s.profileId === id)
   const profileChanged = !!space && profileId !== space.profileId
+  const profileChoices = [
+    ...(isNew ? [{ id: 'new', name: 'New profile', detail: 'Its own logins, history and extensions' }] : []),
+    ...state.profiles.map((p) => {
+      const users = usersOf(p.id).map((s) => s.name).join(', ')
+      return { id: p.id, name: p.name, detail: users && `${isNew ? 'Shared with' : 'Also used by'} ${users}` }
+    })
+  ]
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
     const n = name.trim() || space?.name || fallbackName
     const c = HEX.test(color) ? color : (space?.color ?? SPACE_COLORS[0])
+    const c2 = HEX.test(color2) ? color2 : ''
     if (space) {
-      dispatch({ type: 'updateSpace', id: space.id, name: n, emoji, color: c, profileId: profileChanged ? profileId : undefined })
+      dispatch({ type: 'updateSpace', id: space.id, name: n, emoji, color: c, color2: c2, profileId: profileChanged ? profileId : undefined })
     } else {
       dispatch({
         type: 'createSpace',
         name: n,
         emoji: emoji || undefined,
         color: c,
+        color2: c2 || undefined,
         profileId: profileId === 'new' ? 'new' : profileId,
         profileName: profileId === 'new' ? profileName.trim() || n : undefined
       })
@@ -139,38 +150,35 @@ export function SpaceEditor({ state, close, spaceId }: { state: AppState; close:
 
           <div className="field">
             <span>Color</span>
-            <div className="color-row">
-              {SPACE_COLORS.map((c) => (
-                <button
-                  type="button"
-                  key={c}
-                  className={cx('sw', color.toLowerCase() === c && 'on')}
-                  style={{ background: c }}
-                  title={c}
-                  aria-label={`Color ${c}`}
-                  onClick={() => setColor(c)}
-                />
-              ))}
-              <input type="color" aria-label="Custom color" title="Custom color" value={HEX.test(color) ? color : '#7c6cf2'} onChange={(e) => setColor(e.target.value)} />
-              <span className="hex">{color}</span>
-            </div>
+            <ColorRow label="Color" value={color} onChange={setColor} />
+            {color2 ? (
+              <>
+                <div className="second-color">
+                  <span>Second color</span>
+                  <button type="button" className="btn small" onClick={() => setColor2('')}>
+                    Remove
+                  </button>
+                </div>
+                <ColorRow label="Second color" value={color2} onChange={setColor2} />
+              </>
+            ) : (
+              <button type="button" className="btn small add-color" onClick={() => setColor2(SPACE_COLORS.find((c) => c !== color.toLowerCase())!)}>
+                <Icon name="plus" size={13} /> Second color
+              </button>
+            )}
           </div>
 
-          <label className="field">
+          <div className="field">
             <span>Profile</span>
-            <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-              {isNew && <option value="new">New profile (separate logins, history &amp; extensions)</option>}
-              {state.profiles.map((p) => {
-                const users = usersOf(p.id)
-                const by = users.length ? ` — used by ${users.map((s) => s.name).join(', ')}` : ''
-                return (
-                  <option key={p.id} value={p.id}>
-                    {isNew ? `Share with: ${p.name}${by}` : `${p.name}${by}`}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
+            <div className="segmented" role="radiogroup" aria-label="Profile">
+              {profileChoices.map((p) => (
+                <button type="button" role="radio" aria-checked={profileId === p.id} key={p.id} className={cx(profileId === p.id && 'on')} onClick={() => setProfileId(p.id)}>
+                  {p.name}
+                  {p.detail && <small>{p.detail}</small>}
+                </button>
+              ))}
+            </div>
+          </div>
           {isNew && profileId === 'new' && (
             <label className="field">
               <span>Profile name</span>
@@ -204,6 +212,26 @@ export function SpaceEditor({ state, close, spaceId }: { state: AppState; close:
           </div>
         </div>
       </form>
+    </div>
+  )
+}
+
+function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+  return (
+    <div className="color-row" role="group" aria-label={label}>
+      {SPACE_COLORS.map((c) => (
+        <button
+          type="button"
+          key={c}
+          className={cx('sw', value.toLowerCase() === c && 'on')}
+          style={{ background: c }}
+          title={c}
+          aria-label={`${label} ${c}`}
+          onClick={() => onChange(c)}
+        />
+      ))}
+      <CustomColor color={value} onChange={onChange} />
+      <span className="hex">{value}</span>
     </div>
   )
 }
