@@ -47,7 +47,23 @@ export class History {
       CREATE INDEX IF NOT EXISTS visits_time ON visits(time);
       CREATE INDEX IF NOT EXISTS urls_last ON urls(last_visit);
     `)
+    this.removeDuplicateVisits()
     this.prune(now)
+  }
+
+  /** Once: before visits were unique, importing a browser again added all its history a second time. */
+  private removeDuplicateVisits(): void {
+    if ((this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version >= 1) return
+    this.transaction(() =>
+      this.db.exec(`
+        UPDATE urls SET visit_count = MAX(1, visit_count - d.extra)
+          FROM (SELECT url, COUNT(*) - COUNT(DISTINCT time) AS extra FROM visits GROUP BY url) d
+          WHERE d.url = urls.url AND d.extra > 0;
+        DELETE FROM visits WHERE id NOT IN (SELECT MIN(id) FROM visits GROUP BY url, time);
+        CREATE UNIQUE INDEX visits_url_time ON visits(url, time);
+        PRAGMA user_version = 1;
+      `)
+    )
   }
 
   private prune(now: number): void {
@@ -65,7 +81,7 @@ export class History {
            title = CASE WHEN excluded.title != '' THEN excluded.title ELSE urls.title END`
       )
       .run(url, title, time)
-    this.db.prepare('INSERT INTO visits (url, time) VALUES (?, ?)').run(url, time)
+    this.db.prepare('INSERT OR IGNORE INTO visits (url, time) VALUES (?, ?)').run(url, time)
   }
 
   setTitle(url: string, title: string): void {
@@ -109,27 +125,35 @@ export class History {
       .all(query, like, like, limit, offset) as unknown as (HistoryEntry & { time: number })[]
   }
 
+  /** Returns how many were new: a visit already here (same page, same moment) is skipped. */
   import(visits: ImportedVisit[]): number {
+    const insert = this.db.prepare('INSERT OR IGNORE INTO visits (url, time) VALUES (?, ?)')
     const upsert = this.db.prepare(
       `INSERT INTO urls (url, title, visit_count, last_visit) VALUES (?, ?, 1, ?)
        ON CONFLICT(url) DO UPDATE SET visit_count = visit_count + 1,
          last_visit = MAX(last_visit, excluded.last_visit),
          title = CASE WHEN urls.title = '' THEN excluded.title ELSE urls.title END`
     )
-    const insert = this.db.prepare('INSERT INTO visits (url, time) VALUES (?, ?)')
+    let added = 0
+    this.transaction(() => {
+      for (const v of visits) {
+        if (!/^https?:/.test(v.url) || !insert.run(v.url, v.time).changes) continue
+        upsert.run(v.url, v.title, v.time)
+        added++
+      }
+    })
+    return added
+  }
+
+  private transaction(run: () => void): void {
     this.db.exec('BEGIN')
     try {
-      for (const v of visits) {
-        if (!/^https?:/.test(v.url)) continue
-        upsert.run(v.url, v.title, v.time)
-        insert.run(v.url, v.time)
-      }
+      run()
       this.db.exec('COMMIT')
     } catch (err) {
       this.db.exec('ROLLBACK')
       throw err
     }
-    return visits.length
   }
 
   deleteUrl(url: string): void {
