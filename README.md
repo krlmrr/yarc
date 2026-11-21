@@ -2,7 +2,7 @@
 
 # YARC: an open-source alternative to the Arc browser
 
-**YARC is a free, open-source alternative to the Arc browser, which shuts down on 22 December 2026.** It will feel familiar if you used Arc: a vertical sidebar, Spaces with their own profiles, the command bar, split view, Little Window and Peek. It imports your Arc spaces, profiles, favorites, pinned tabs, folders, archive and history in one step. It runs on macOS, Windows and Linux (experimental).
+**YARC is a free, open-source alternative to the Arc browser, which shuts down on 22 December 2026.** It will feel familiar if you used Arc: a vertical sidebar, Spaces with their own profiles, the command bar, split view, Little Window, Peek, and canvases in place of Easels. It imports your Arc spaces, profiles, favorites, pinned tabs, folders, archive and history in one step. It runs on macOS, Windows and Linux (experimental), and it collects nothing about you: no telemetry, no account, no servers of its own.
 
 **[Download YARC](https://github.com/yenebeb/yarc/releases/latest)** · [Website](https://yenebeb.nl/yarc) · [Moving from Arc](#moving-from-arc)
 
@@ -20,7 +20,6 @@ The Browser Company is shutting Arc down on **22 December 2026**. After that dat
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [FAQ](#faq)
 - [Where your data lives](#where-your-data-lives)
-- [What we collect](#what-we-collect)
 - [Building from source](#building-from-source)
 - [How it works](#how-it-works)
 - [Roadmap and known limitations](#roadmap-and-known-limitations)
@@ -28,6 +27,16 @@ The Browser Company is shutting Arc down on **22 December 2026**. After that dat
 - [License](#license)
 
 ## Features
+
+### Nothing collected
+
+YARC collects nothing about you:
+
+- **no telemetry**
+- **no account**
+- **no servers**
+
+The only thing it needs is a ping to check for updates and to refresh its ad-blocking lists.
 
 ### The sidebar
 
@@ -121,13 +130,11 @@ Leave a tab while its video plays and the video keeps going in a small floating 
 
 Music and other sound from a tab you leave gets a card at the bottom of the sidebar instead, with play/pause, mute and the site's icon to go back to the tab. Hover the cards to see them all, each with its title, a button to float its video again and **✕** to close it. You can turn the floating player off in Settings.
 
-### Canvases
+### Canvases, YARC's Easels
 
-A canvas is a freeform board in your sidebar for collecting bits of the web: a moodboard, a research wall, a plan. Make one with **New Canvas** in the command bar. It sits with your pinned tabs, and you can drag it into folders or onto another space. Draw on it, write on it, and paste or drop images on it.
+![Capturing part of a page to a canvas, then pressing play to see it live](docs/screenshots/canvases.gif)
 
-`⌘⇧2` / `Ctrl+Shift+2` (**Capture to Canvas**) captures part of the page you're on. Point at a photo, chart or card and click, or drag an area; scroll to take a bigger part. Then pick the canvas it goes to. Right-click an image on a page and choose **Add Image to Canvas** to keep the image itself at full size. Hovering a capture on the canvas shows the page it came from; click the arrow to open it in Peek. Select a few captures and click **Arrange in Grid** to tidy them up. The menu exports the canvas as a PNG or copies it.
-
-Canvases stay on your computer: there's no sharing. Arc's Easels can't be imported yet: their contents lived on Arc's servers. Export them from Arc's Library (it saves every Easel as web pages) before Arc shuts down; importing that export is planned.
+A board in your sidebar for bits of the web, like Arc's Easels, and on Windows and Linux too. `⌘⇧2` / `Ctrl+Shift+2` captures part of a page; ▶ shows a capture live. Canvases stay on your computer.
 
 ### Built-in ad and tracker blocking
 
@@ -227,7 +234,7 @@ Most features keep the names you know from Arc. One is different: Arc's Little A
 
 - **Saved passwords, cookies and logins.** Browsers encrypt these with a key tied to the machine, so you'll need to sign in to your sites again. Before Arc goes away, export your passwords from Arc (`arc://settings/passwords` → ⋮ → Export) and import them into a password manager such as Bitwarden or 1Password. Their extensions work in YARC.
 - **Boosts and Notes.** YARC doesn't have these features yet.
-- **Easels.** Their contents were kept on Arc's servers, not on your computer, so they can't be read from Arc's files. **Before Arc shuts down, export them**: Arc's Library has a button that exports every Easel as web pages, which open offline. YARC has [canvases](#canvases) instead, and importing that export into canvases is planned.
+- **Easels.** Their contents were kept on Arc's servers, not on your computer, so they can't be read from Arc's files. **Before Arc shuts down, export them**: Arc's Library has a button that exports every Easel as web pages, which open offline. YARC has [canvases](#canvases-yarcs-easels) instead, and importing that export into canvases is planned.
 - **Extensions.** Reinstall them from the Chrome Web Store, in each space that needs them.
 
 ## Keyboard shortcuts
@@ -287,7 +294,7 @@ Not yet. Each install keeps its own data. Syncing is on the [roadmap](#roadmap-a
 Electron is real Chromium, so sites behave as they do in Chrome, and Chrome extensions work. It also let a small project build a fully custom interface without maintaining a fork of Chromium. The trade-off is memory use roughly on par with Chrome. Arc itself was Chromium too.
 
 **Is it private?**
-YARC has no account and doesn't track you. The only thing it reports is a daily count of open installs per platform, without any ID, and you can turn that off (see [What we collect](#what-we-collect)). Its other network requests are search suggestions (sent to the search engine you chose), Chrome Web Store update checks for installed extensions, a daily download of the ad-blocking filter lists from GitHub, and update checks for YARC itself against its GitHub releases (which you can turn off in Settings).
+Yes. YARC collects nothing and has no account or servers of its own; see [Nothing collected](#nothing-collected) for the few requests it makes itself.
 
 **Who makes YARC?**
 One person, in their spare time: YARC is a hobby project. Features land when they're ready, and some may change along the way. On security, YARC relies on Chromium: every page runs in Chromium's sandbox, as it does in Chrome, and Chromium security fixes ship as soon as Electron releases them (see [Updating](#updating)). YARC's own updates are signed and checked before they install.
@@ -307,17 +314,6 @@ No. Blocking is built in (see [Built-in ad and tracker blocking](#built-in-ad-an
 | Ad-blocking filter cache | `adblock/engine.bin` | same |
 | Cookies, site storage, cache | `Partitions/profile-<id>` | same |
 | Error log | `logs\main.log` | `~/Library/Logs/YARC/main.log` |
-
-## What we collect
-
-Only a daily count of open installs, per platform. Once a day, an open install downloads one tiny file from YARC's [`usage` release](https://github.com/yenebeb/yarc/releases/tag/usage) on GitHub. The file's name is the whole message:
-
-- the platform and chip: macOS, Windows or Linux, on Apple silicon/Arm or Intel/x64;
-- which count it is: today, this week, this month, or a new install's first count.
-
-There's no ID, so two days can't be linked to the same install, and nothing about you, your settings or what you browse. The install remembers on its own disk when it was last counted, so it's counted at most once a day, a week and a month. GitHub sees your IP address, as it does for every update check. The code is [`src/main/usage.ts`](src/main/usage.ts), and a test fails if the message ever grows. Anyone can see the totals on the `usage` release, updated daily.
-
-It's on by default. The first count waits five minutes after launch, after the welcome card (or, after an update, the What's New card) has told you about it. Turn it off in **Settings > Privacy**. Builds from source never count.
 
 ## Building from source
 
@@ -415,7 +411,6 @@ Planned or open for contributions:
 - [ ] Multiple main windows
 - [ ] Sync between your own devices
 - [ ] Notes
-- [ ] Live captures on canvases (press play to see the page live; [docs/canvas.md](docs/canvas.md))
 - [ ] Code signing and notarization, to remove the install warnings (and keep macOS camera, microphone and screen permissions across updates)
 
 ## Contributing
