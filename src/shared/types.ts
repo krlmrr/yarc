@@ -1,3 +1,4 @@
+import type { LinkRoute } from './link-routes'
 import type { SitePermissionRow } from './permissions'
 import type { Side } from './split'
 import type { TourStep } from './tour'
@@ -94,6 +95,8 @@ export type SearchEngine = 'google' | 'duckduckgo' | 'bing' | 'kagi' | 'brave'
 
 export const SIDEBAR_WIDTH = { min: 200, max: 480 }
 
+export type SettingsSection = 'general' | 'traffic' | 'profiles' | 'sites' | 'import' | 'extensions' | 'shortcuts' | 'about'
+
 export interface Settings {
   sidebarVisible: boolean
   sidebarWidth: number
@@ -102,6 +105,8 @@ export interface Settings {
   archiveAfterHours: number
   searchEngine: SearchEngine
   littleArcForExternalLinks: boolean
+  /** Checked before `littleArcForExternalLinks`; the first match wins. */
+  linkRoutes: LinkRoute[]
   /** 0 = never. */
   littleCloseAfterHours: number
   /** Empty = profile of the active space. */
@@ -270,7 +275,7 @@ export type OverlayMode =
   | { kind: 'share-picker'; id: string; site: string; sources: ShareSource[]; systemAudio: boolean }
   /** A short message over the top of the page that doesn't take the keyboard. */
   | { kind: 'notice'; text: string }
-  | { kind: 'settings' }
+  | { kind: 'settings'; section?: SettingsSection }
   | { kind: 'library'; tab?: 'archive' | 'history' | 'downloads' | 'spaces' }
   | { kind: 'space-editor'; spaceId?: ID }
   | { kind: 'sidebar' }
