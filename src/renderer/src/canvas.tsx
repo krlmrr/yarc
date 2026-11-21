@@ -19,6 +19,7 @@ import {
   type Guide,
   type ImageItem,
   type InboxItem,
+  type LiveCard,
   type TextItem,
   type TextSize
 } from '../../shared/canvas'
@@ -33,6 +34,7 @@ const MIN_ZOOM = 0.1
 const MAX_ZOOM = 4
 const SNAP_SCREEN_PX = 6
 const CARD_FRAME = 6
+const LIVE_MIN = { width: 80, height: 60 }
 const STROKE = 2.5
 const DRAW_STROKE = 3
 const LINE_HEIGHT = 1.25
@@ -78,6 +80,7 @@ const TOOLS: { tool: Tool; icon: IconName; label: string; key: string }[] = [
 ]
 
 const newId = () => crypto.randomUUID()
+const titleOf = (items: BoardItem[]) => items.find((i): i is TextItem => i.kind === 'text' && !!i.title)
 const paint = (color: Color, dark: boolean) => PALETTE[color][dark ? 'dark' : 'light']
 const toWorld = (p: Point, v: View): Point => ({ x: (p.x - v.x) / v.zoom, y: (p.y - v.y) / v.zoom })
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
@@ -283,7 +286,8 @@ function ItemView({
   dark,
   files,
   nodeRef,
-  onEdited
+  onEdited,
+  onPlay
 }: {
   item: BoardItem
   selected: boolean
@@ -292,19 +296,25 @@ function ItemView({
   files: Map<string, CanvasImage>
   nodeRef: (node: HTMLElement | null) => void
   onEdited: (text: string) => void
+  onPlay: () => void
 }) {
   const place: CSSProperties = { left: item.x, top: item.y, width: item.width, height: item.height }
   const cls = cx('item', item.kind, selected && 'selected')
   if (item.kind === 'capture') {
     const source = item.source
     return (
-      <div className={cx(cls, 'card')} data-id={item.id} style={place}>
+      <div className={cx(cls, 'card', item.live && 'live')} data-id={item.id} style={place}>
         <div className="frame" />
         <img src={files.get(item.fileId)?.dataURL} alt={source?.title ?? ''} draggable={false} />
         {source ? (
           <div className="footer">
             {source.favicon ? <img className="favicon" src={source.favicon} alt="" draggable={false} /> : <Icon name="globe" size={15} />}
             <span className="title">{source.title || source.url}</span>
+            {item.capture ? (
+              <button title={item.live ? 'Show the picture' : 'Show the live page'} onPointerDown={(e) => e.stopPropagation()} onClick={onPlay}>
+                <Icon name={item.live ? 'pause' : 'play'} size={14} />
+              </button>
+            ) : null}
             <button title="Open the page" onPointerDown={(e) => e.stopPropagation()} onClick={() => void arc.canvasOpenUrl(source.url)}>
               <Icon name="external" size={14} />
             </button>
@@ -438,6 +448,7 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
   const [draft, setDraft] = useState<number[]>()
   const [menu, setMenu] = useState<{ at: Point; board: boolean }>()
   const [panning, setPanning] = useState(false)
+  const [shown, setShown] = useState(true)
 
   // The latest state, for event handlers registered once.
   const itemsRef = useRef(items)
@@ -473,6 +484,7 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
   const lastDown = useRef<{ at: number; id: string | undefined }>({ at: 0, id: undefined })
   const spaceDown = useRef(false)
   const lastPlaced = useRef<string>(undefined)
+  const centerTitle = useRef(!loaded.scene)
   const pasteCount = useRef(0)
   const nodes = useRef(new Map<string, HTMLElement>())
 
@@ -535,6 +547,13 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
       return { ...item, width, height }
     })
     if (changed) setItems(next)
+  })
+  useLayoutEffect(() => {
+    const title = titleOf(itemsRef.current)
+    if (!centerTitle.current || !title?.width) return
+    centerTitle.current = false
+    const { width, height } = viewSize()
+    setView({ ...viewRef.current, x: Math.round(width / 2 - (title.width / 2) * viewRef.current.zoom), y: Math.round(height / 2 - (title.height / 2) * viewRef.current.zoom) })
   })
 
 
@@ -737,7 +756,9 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
             )
       const size = placedSize(natural.width, natural.height)
       const previous = [...itemsRef.current, ...added].find((i) => i.id === lastPlaced.current)
-      const spot = placeNext(previous, size, center())
+      const title = titleOf(itemsRef.current)
+      const onlyTitle = !previous && title && itemsRef.current.every((i) => i === title)
+      const spot = onlyTitle ? { x: Math.round(title.x + (title.width - size.width) / 2), y: Math.round(title.y + title.height + 32) } : placeNext(previous, size, center())
       files.current.set(q.fileId, { mimeType: q.mimeType, dataURL: q.dataURL })
       const card: CardItem = { id: newId(), kind: 'capture', fileId: q.fileId, ...spot, ...size, source: q.data.source, capture: q.data.capture, imageUrl: q.data.imageUrl }
       added.push(card)
@@ -1029,6 +1050,27 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
 
 
   const onScreen = (b: Box): Box => ({ x: b.x * view.zoom + view.x, y: b.y * view.zoom + view.y, width: b.width * view.zoom, height: b.height * view.zoom })
+
+  useEffect(() => arc.onCanvasShown(setShown), [])
+  const togglePlay = (id: string) => setItems(itemsRef.current.map((i) => (i.id === id && i.kind === 'capture' ? { ...i, live: !i.live || undefined } : i)))
+  const lastLive = useRef('')
+  useEffect(() => {
+    const board = boardRef.current?.getBoundingClientRect()
+    if (!board) return
+    const visible = { x: 0, y: 0, width: board.width, height: board.height }
+    const cards: LiveCard[] = !shown
+      ? []
+      : items.flatMap((i) => {
+          if (i.kind !== 'capture' || !i.live || !i.capture || !i.source) return []
+          const box = onScreen(i)
+          const hidden = !!menu || box.width < LIVE_MIN.width || box.height < LIVE_MIN.height || !intersects(box, visible)
+          return [{ id: i.id, url: i.source.url, capture: i.capture, box: { ...box, x: box.x + board.left, y: box.y + board.top }, zoom: view.zoom, hidden }]
+        })
+    const json = JSON.stringify(cards)
+    if (json === lastLive.current) return
+    lastLive.current = json
+    arc.canvasLive(cards)
+  })
   const single = selected.length === 1 ? items.find((i) => i.id === selected[0]) : undefined
   const handles: Handle[] = !single || single.kind === 'text' || editing ? [] : keepsShape(single) ? ['nw', 'ne', 'sw', 'se'] : ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   const chosenItems = items.filter((i) => selected.includes(i.id))
@@ -1041,9 +1083,9 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
   const currentFill = firstShape && (firstShape.kind === 'rect' || firstShape.kind === 'ellipse') ? firstShape.fill : style.fill
   const currentSize = chosenItems.find((i): i is TextItem => i.kind === 'text')?.size ?? style.textSize
 
-  const title = items.find((i): i is TextItem => i.kind === 'text' && !!i.title)
+  const title = titleOf(items)
   const empty = items.every((i) => i === title) && !editing
-  const hintAt = title ? { left: title.x * view.zoom + view.x, top: (title.y + title.height) * view.zoom + view.y + 14 } : undefined
+  const hintAt = title ? { left: (title.x + title.width / 2) * view.zoom + view.x, top: (title.y + title.height) * view.zoom + view.y + 14 } : undefined
 
   return (
     <div className="canvas-page">
@@ -1079,6 +1121,7 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
               files={files.current}
               nodeRef={(node) => (node ? nodes.current.set(item.id, node) : nodes.current.delete(item.id))}
               onEdited={(text) => finishEdit(item.id, text)}
+              onPlay={() => togglePlay(item.id)}
             />
           ))}
           {draft ? (

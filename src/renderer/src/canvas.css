@@ -105,7 +105,8 @@ body {
 }
 
 .card:hover .frame,
-.card.selected .frame {
+.card.selected .frame,
+.card.live .frame {
   bottom: -40px;
 }
 
@@ -125,7 +126,8 @@ body {
 }
 
 .card:hover .footer,
-.card.selected .footer {
+.card.selected .footer,
+.card.live .footer {
   display: flex;
 }
 
@@ -281,6 +283,8 @@ svg.draft path {
 .empty-hint {
   position: absolute;
   max-width: 420px;
+  transform: translateX(-50%);
+  text-align: center;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.5;
@@ -289,7 +293,6 @@ svg.draft path {
 
 .empty-hint.centered {
   transform: translate(-50%, -50%);
-  text-align: center;
 }
 
 .empty-hint kbd {
