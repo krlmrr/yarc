@@ -36,13 +36,15 @@ export function useAppState(): AppState | undefined {
   return state
 }
 
-export function useOverlayMode(): OverlayMode {
-  const [mode, setMode] = useState<OverlayMode>({ kind: 'none' })
+/** `opened` counts changes of kind as they arrive, so a panel closed and reopened within one render still starts fresh. */
+export function useOverlayMode(): { mode: OverlayMode; opened: number } {
+  const [current, setCurrent] = useState<{ mode: OverlayMode; opened: number }>({ mode: { kind: 'none' }, opened: 0 })
   useEffect(() => {
-    void arc.getOverlay().then(setMode)
-    return arc.onOverlay(setMode)
+    const take = (mode: OverlayMode) => setCurrent((c) => ({ mode, opened: c.opened + Number(mode.kind !== c.mode.kind) }))
+    void arc.getOverlay().then(take)
+    return arc.onOverlay(take)
   }, [])
-  return mode
+  return current
 }
 
 export function activeSpace(state: AppState): Space {
