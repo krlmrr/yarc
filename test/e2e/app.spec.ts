@@ -71,7 +71,7 @@ test.beforeAll(async () => {
     res.setHeader('content-type', 'text/html')
     if (req.url === '/blog') return res.end('<!doctype html><title>Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">')
     if (req.url === '/still-loading') return res.end('<!doctype html><title>Still loading</title><img src="/never-loads">')
-    if (req.url === '/dnr-page') return res.end('<!doctype html><title>dnr</title><script src="/dnr-static.js"></script><script src="/dnr-dynamic.js"></script><script src="/dnr-kept.js"></script>')
+    if (req.url === '/dnr-page') return res.end('<!doctype html><title>dnr</title><script src="/dnr-static.js"></script><script src="/dnr-dynamic.js"></script><script src="/dnr-redirect.js"></script><script src="/dnr-kept.js"></script>')
     res.end(req.url === '/video-page' ? VIDEO_PAGE : page((req.url ?? '/').slice(1) || 'home'))
   })
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
@@ -1172,9 +1172,11 @@ test('extensions get the chrome.* APIs on browser.* too', async () => {
 })
 
 // Electron has no declarativeNetRequest: YARC's own one makes MV3 blockers (uBlock Origin Lite) block.
-test('an extension’s declarativeNetRequest rules block requests, from its manifest and from its code', async () => {
+test('an extension’s declarativeNetRequest rules block requests, from its manifest and from its code, and redirect once granted the site', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
   const blockScript = (id: number, urlFilter: string) => ({ id, action: { type: 'block' }, condition: { urlFilter, resourceTypes: ['script'] } })
+  // Redirects need the site's permission, which this extension only asks for at runtime.
+  const redirectScript = { id: 2, action: { type: 'redirect', redirect: { url: `${base}/dnr-redirected.js` } }, condition: { urlFilter: '/dnr-redirect.js', resourceTypes: ['script'] } }
   writeFileSync(
     join(dir, 'manifest.json'),
     JSON.stringify({
@@ -1182,6 +1184,7 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
       name: 'dnr blocker',
       version: '1.0',
       permissions: ['declarativeNetRequest'],
+      optional_host_permissions: ['<all_urls>'],
       background: { service_worker: 'bg.js' },
       declarative_net_request: { rule_resources: [{ id: 'on', enabled: true, path: 'on.json' }, { id: 'off', enabled: false, path: 'off.json' }] }
     })
@@ -1190,7 +1193,8 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
   writeFileSync(join(dir, 'off.json'), JSON.stringify([blockScript(1, '/dnr-kept.js')]))
   writeFileSync(
     join(dir, 'bg.js'),
-    `chrome.declarativeNetRequest.updateDynamicRules({ addRules: [${JSON.stringify(blockScript(1, '||127.0.0.1^*/dnr-dynamic.js'))}] })
+    `chrome.permissions.request({ origins: ['<all_urls>'] })
+      .then(() => chrome.declarativeNetRequest.updateDynamicRules({ addRules: ${JSON.stringify([blockScript(1, '||127.0.0.1^*/dnr-dynamic.js'), redirectScript])} }))
       .then(() => chrome.declarativeNetRequest.getEnabledRulesets())
       .then((ids) => console.log('dnr ready: ' + ids.join(',')))`
   )
@@ -1204,12 +1208,12 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
     if ((await ready) !== 'dnr ready: on') throw new Error('unexpected rulesets')
     return ext.id
   }, dir)
-  const scripts = ['/dnr-static.js', '/dnr-dynamic.js', '/dnr-kept.js']
+  const scripts = ['/dnr-static.js', '/dnr-dynamic.js', '/dnr-redirect.js', '/dnr-redirected.js', '/dnr-kept.js']
   await dispatch({ type: 'open', url: `${base}/dnr-page`, where: 'tab' })
   const tabId = (await space()).activeItemId!
   try {
     await expect.poll(() => hits.includes('/dnr-page') && hits.includes('/dnr-kept.js'), { timeout: 15_000 }).toBe(true)
-    expect(scripts.filter((s) => hits.includes(s))).toEqual(['/dnr-kept.js'])
+    expect(scripts.filter((s) => hits.includes(s))).toEqual(['/dnr-redirected.js', '/dnr-kept.js'])
   } finally {
     await dispatch({ type: 'close', id: tabId })
     await app.evaluate((_e, id) => {

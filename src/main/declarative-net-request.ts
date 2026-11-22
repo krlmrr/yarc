@@ -204,7 +204,8 @@ export class NetRules {
   constructor(
     session: Session,
     private dir: string,
-    private onRequestHeaderRules: (wanted: boolean) => void
+    private onRequestHeaderRules: (wanted: boolean) => void,
+    private grantedOrigins: (extensionId: string) => string[]
   ) {
     bySession.set(session, this)
     listenOnIpc()
@@ -229,18 +230,18 @@ export class NetRules {
     for (const x of this.order) {
       const outcome = decide(x.match(req), x.hasAllowAll ? this.frameAllowance(x, d) : 0)
       const action = outcome.action
-      if (action && (!x.blockNeedsHostAccess || x.hostAccess(d.url))) {
+      if (action && (!x.blockNeedsHostAccess || this.hostAccess(x, d.url))) {
         if (action.rule.action.type === 'block') {
           x.record(action, req.tabId)
           return { cancel: true }
         }
-        const target = !redirect && (action.rule.action.type === 'upgradeScheme' || x.hostAccess(d.url)) ? redirectTarget(action.rule, d.url, x.ext.id) : undefined
+        const target = !redirect && (action.rule.action.type === 'upgradeScheme' || this.hostAccess(x, d.url)) ? redirectTarget(action.rule, d.url, x.ext.id) : undefined
         if (target) {
           redirect = target
           x.record(action, req.tabId)
         }
       }
-      if (outcome.headers.length && x.hostAccess(d.url)) headers.push(...outcome.headers)
+      if (outcome.headers.length && this.hostAccess(x, d.url)) headers.push(...outcome.headers)
     }
     if (redirect) return { redirectURL: redirect }
     if (headers.length) this.keepHeaderRules(d.id, headers)
@@ -259,6 +260,11 @@ export class NetRules {
     const current = Object.entries(response.responseHeaders ?? d.responseHeaders ?? {}).map(([k, v]) => [k, Array.isArray(v) ? v : [v]])
     const headers = modifyResponseHeaders(Object.fromEntries(current), rules)
     return headers ? { ...response, responseHeaders: headers } : response
+  }
+
+  /** Redirect and header rules need access to the site: from the manifest, or granted at runtime. */
+  private hostAccess(x: ExtensionRules, url: string): boolean {
+    return x.hostAccess(url) || this.grantedOrigins(x.ext.id).some((p) => patternAllows(p, url))
   }
 
   private keepHeaderRules(id: number, rules: Match[]): void {
