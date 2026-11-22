@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, nativeTheme, screen, type BrowserWindowConstructorOptions, type Rectangle, type View, type WebContents } from 'electron'
+import { BrowserWindow, WebContentsView, nativeTheme, screen, type BrowserWindowConstructorOptions, type Point, type Rectangle, type View, type WebContents } from 'electron'
 import { join } from 'node:path'
 import { IPC } from '../shared/ipc'
 import { isFloating } from '../shared/tour'
@@ -58,6 +58,8 @@ export class MainWindow {
   /** Unset follows the system. */
   private appearance: 'light' | 'dark' | undefined
   private captionDark: boolean | undefined
+  private pointerWatch: ((p: Point) => void) | undefined
+  private pointerStops = new Map<WebContents, () => void>()
 
   /** `background`: windows restored behind the front one. */
   constructor(bounds: Partial<Rectangle> | undefined, background = false) {
@@ -158,6 +160,7 @@ export class MainWindow {
     this.shown = next
     if (this.overlayAttached) this.raiseOverlay()
     else this.prompt?.raise()
+    this.listenForPointer()
   }
 
   setTop(view: WebContentsView | undefined, rect?: Rectangle): void {
@@ -167,6 +170,43 @@ export class MainWindow {
     if (rect) view.setBounds(rect)
     this.win.contentView.addChildView(view)
     this.prompt?.raise()
+    this.listenForPointer()
+  }
+
+  /** In window coordinates, from mouse events in its own views: on Wayland, `screen` knows neither the cursor nor the window. */
+  watchPointer(onMove: ((p: Point) => void) | undefined): void {
+    for (const stop of this.pointerStops.values()) stop()
+    this.pointerStops.clear()
+    this.pointerWatch = onMove
+    this.listenForPointer()
+  }
+
+  private listenForPointer(): void {
+    if (!this.pointerWatch) return
+    const listen = (wc: WebContents, origin: () => Point): void => {
+      if (this.pointerStops.has(wc) || wc.isDestroyed()) return
+      const onMouse = (_e: Electron.Event, m: Electron.MouseInputEvent): void => {
+        // Says nothing about where the pointer went, and comes spuriously when views are restacked.
+        if (m.type === 'mouseLeave') return
+        const o = origin()
+        this.pointerWatch?.({ x: o.x + m.x, y: o.y + m.y })
+      }
+      wc.on('before-mouse-event', onMouse)
+      this.pointerStops.set(wc, () => wc.isDestroyed() || wc.off('before-mouse-event', onMouse))
+    }
+    const walk = (views: View[], origin: () => Point): void => {
+      for (const view of views) {
+        const at = (): Point => {
+          const o = origin()
+          const b = view.getBounds()
+          return { x: o.x + b.x, y: o.y + b.y }
+        }
+        if (view instanceof WebContentsView) listen(view.webContents, at)
+        walk(view.children, at)
+      }
+    }
+    listen(this.ui, () => ({ x: 0, y: 0 }))
+    walk(this.win.contentView.children, () => ({ x: 0, y: 0 }))
   }
 
   detach(view: View): void {
@@ -202,5 +242,6 @@ export class MainWindow {
     this.win.contentView.addChildView(this.overlay)
     if (this.top) this.win.contentView.addChildView(this.top)
     this.prompt?.raise()
+    this.listenForPointer()
   }
 }

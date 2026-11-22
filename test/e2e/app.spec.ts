@@ -35,6 +35,8 @@ async function launch(): Promise<ElectronApplication> {
   const exe = process.env.YARC_EXE
   const a = await electron.launch({
     ...(exe ? { executablePath: exe, args: [] } : { args: ['out/main/index.js'] }),
+    // Playwright otherwise adds --no-sandbox on Linux, and service-worker preloads (extension APIs) don't run without the sandbox.
+    chromiumSandbox: true,
     env: { ...process.env, YARC_USER_DATA: userData, YARC_TEST: '1' }
   })
   await a.firstWindow()
@@ -987,6 +989,41 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
   })
 })
 
+test('the peeking sidebar stays out while the pointer is near it and slides back once it moves over the page', async () => {
+  await dispatch({ type: 'open', url: `${base}/peek-away`, where: 'tab' })
+  // Chromium sends mouse moves at the real cursor when views change: keep the window out from under it.
+  const bounds = await app.evaluate(({ screen }) => {
+    const win = (globalThis as any).arcBrowser.window.win
+    const before = win.getBounds()
+    const c = screen.getCursorScreenPoint()
+    const a = screen.getDisplayNearestPoint(c).workArea
+    const [width, height] = [800, 520]
+    win.setBounds({ x: c.x - a.x > a.width / 2 ? a.x : a.x + a.width - width, y: c.y - a.y > a.height / 2 ? a.y : a.y + a.height - height, width, height })
+    return before
+  })
+  await dispatch({ type: 'toggleSidebar' })
+  await dispatch({ type: 'sidebarReveal', show: true })
+  const kind = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
+  const moveIn = (target: 'overlay' | 'page', x: number) =>
+    app.evaluate(
+      (_e, [t, px]) => {
+        const b = (globalThis as any).arcBrowser
+        const wc = t === 'overlay' ? b.window.overlay.webContents : b.activeTab().wc
+        wc.sendInputEvent({ type: 'mouseMove', x: px, y: 200 })
+      },
+      [target, x] as const
+    )
+  await moveIn('overlay', 40)
+  // Just past the sidebar's edge, over the page, is still near it.
+  await moveIn('page', 10)
+  await new Promise((r) => setTimeout(r, 700))
+  expect(await kind()).toBe('sidebar')
+  await moveIn('page', 600)
+  await expect.poll(kind).toBe('none')
+  await dispatch({ type: 'toggleSidebar' })
+  await app.evaluate((_e, b) => (globalThis as any).arcBrowser.window.win.setBounds(b), bounds)
+})
+
 test('dragging a tab inside the peeking sidebar drops in the sidebar, not on the split zones', async () => {
   for (const n of ['peek-fav', 'peek-tube']) await dispatch({ type: 'open', url: `${base}/${n}`, where: 'tab' })
   const fav = (await space()).today.find((t) => t.url.endsWith('/peek-fav'))!
@@ -1152,6 +1189,8 @@ test('a video paused before you leave its tab gets no player and no card', async
   await expect.poll(() => isPlaying(video), { timeout: 10_000 }).toBe(true)
   await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('document.getElementById("v").pause()'), video)
   await expect.poll(() => isPlaying(video)).toBe(false)
+  // Chromium reports the tab audible for a moment after the pause, and an audible tab gets a card.
+  await expect.poll(() => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)).toBe(false)
 
   await dispatch({ type: 'open', url: `${base}/after-paused-video` })
   await new Promise((r) => setTimeout(r, 1000))
