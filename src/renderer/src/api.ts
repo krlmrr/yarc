@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Action } from '../../shared/actions'
 import type { ArcApi } from '../../shared/ipc'
+import { bindingLabel, type CommandId, type Shortcuts } from '../../shared/keymap'
 import type { AppState, OverlayMode, Space } from '../../shared/types'
 
 declare global {
@@ -14,12 +15,19 @@ export const isMac = arc.platform === 'darwin'
 document.documentElement.dataset.platform = arc.platform
 export const dispatch = (a: Action) => void arc.dispatch(a)
 
+let shortcuts: Shortcuts = {}
+export const shortcutLabel = (id: CommandId): string => bindingLabel(id, isMac, shortcuts)
+
 export function useAppState(): AppState | undefined {
   const [state, setState] = useState<AppState>()
   useEffect(() => {
     let alive = true
-    void arc.getState().then((s) => alive && setState(s))
-    const off = arc.onState(setState)
+    const take = (s: AppState) => {
+      shortcuts = s.settings.shortcuts
+      setState(s)
+    }
+    void arc.getState().then((s) => alive && take(s))
+    const off = arc.onState(take)
     return () => {
       alive = false
       off()

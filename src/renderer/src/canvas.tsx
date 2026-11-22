@@ -23,7 +23,6 @@ import {
   type TextItem,
   type TextSize
 } from '../../shared/canvas'
-import { bindingLabel } from '../../shared/keymap'
 import { arc, cx, isMac } from './api'
 import { Icon, type IconName } from './icons'
 import './canvas.css'
@@ -1154,7 +1153,7 @@ function Board({ loaded }: { loaded: CanvasLoad }) {
         </div>
         {empty ? (
           <div className={cx('empty-hint', !hintAt && 'centered')} style={hintAt ?? { left: '50%', top: '50%' }}>
-            Capture part of any page with <kbd>{bindingLabel('capture', isMac)}</kbd>, or right-click an image and choose <b>Add Image to Canvas</b>.
+            Capture part of any page with <kbd>{loaded.captureKey}</kbd>, or right-click an image and choose <b>Add Image to Canvas</b>.
             <br />
             You can also paste or drop images here.
           </div>

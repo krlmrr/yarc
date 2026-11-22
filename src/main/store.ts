@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   adblockAllowlist: [],
   autoUpdate: true,
   floatVideos: true,
+  shortcuts: {},
   theme: 'system'
 }
 

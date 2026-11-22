@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { CaptureTo } from '../../shared/actions'
-import { bindingLabel, type CommandId } from '../../shared/keymap'
+import type { CommandId } from '../../shared/keymap'
 import { matchSiteSearch, siteSearchUrl, type SiteSearch } from '../../shared/site-search'
 import { MAX_PANES, paneIds, placePane, previewRect, sideAt, type Side } from '../../shared/split'
 import { isFloating } from '../../shared/tour'
 import { findItem, spaceCanvases } from '../../shared/tree'
 import type { AppState, ID, OverlayMode, Rect, SearchResult } from '../../shared/types'
-import { activeSpace, arc, cx, dispatch, displayHost, isMac, useAppState, useOverlayMode, useSpaceTheme } from './api'
+import { activeSpace, arc, cx, dispatch, displayHost, isMac, shortcutLabel, useAppState, useOverlayMode, useSpaceTheme } from './api'
 import { Favicon, Icon, type IconName } from './icons'
 import { Tour, UpdateReady, WhatsNew } from './panels/Intro'
 import { Library } from './panels/Library'
@@ -575,7 +575,7 @@ function ResultRow({
   const icon = KIND_ICON[r.kind]
   let hint = ''
   if (r.kind === 'tab' || r.kind === 'pinned' || r.kind === 'favorite') hint = r.spaceId && r.spaceId !== activeSpaceId ? 'Switch to Space & Tab' : 'Switch to Tab'
-  else if (r.kind === 'command' && r.target && !r.target.startsWith('space:')) hint = bindingLabel(r.target as CommandId, isMac)
+  else if (r.kind === 'command' && r.target && !r.target.startsWith('space:')) hint = shortcutLabel(r.target as CommandId)
   else if (r.kind === 'archive') hint = 'Restore'
   const isTab = r.kind === 'tab' || r.kind === 'pinned' || r.kind === 'favorite'
   const subtitle = isTab ? '' : r.kind === 'history' && r.url ? `— ${displayHost(r.url)}` : r.subtitle
