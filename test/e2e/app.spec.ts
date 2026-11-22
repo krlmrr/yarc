@@ -991,6 +991,16 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
 
 test('the peeking sidebar stays out while the pointer is near it and slides back once it moves over the page', async () => {
   await dispatch({ type: 'open', url: `${base}/peek-away`, where: 'tab' })
+  // Chromium sends mouse moves at the real cursor when views change: keep the window out from under it.
+  const bounds = await app.evaluate(({ screen }) => {
+    const win = (globalThis as any).arcBrowser.window.win
+    const before = win.getBounds()
+    const c = screen.getCursorScreenPoint()
+    const a = screen.getDisplayNearestPoint(c).workArea
+    const [width, height] = [800, 520]
+    win.setBounds({ x: c.x - a.x > a.width / 2 ? a.x : a.x + a.width - width, y: c.y - a.y > a.height / 2 ? a.y : a.y + a.height - height, width, height })
+    return before
+  })
   await dispatch({ type: 'toggleSidebar' })
   await dispatch({ type: 'sidebarReveal', show: true })
   const kind = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
@@ -1011,6 +1021,7 @@ test('the peeking sidebar stays out while the pointer is near it and slides back
   await moveIn('page', 600)
   await expect.poll(kind).toBe('none')
   await dispatch({ type: 'toggleSidebar' })
+  await app.evaluate((_e, b) => (globalThis as any).arcBrowser.window.win.setBounds(b), bounds)
 })
 
 test('dragging a tab inside the peeking sidebar drops in the sidebar, not on the split zones', async () => {
@@ -1178,6 +1189,8 @@ test('a video paused before you leave its tab gets no player and no card', async
   await expect.poll(() => isPlaying(video), { timeout: 10_000 }).toBe(true)
   await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('document.getElementById("v").pause()'), video)
   await expect.poll(() => isPlaying(video)).toBe(false)
+  // Chromium reports the tab audible for a moment after the pause, and an audible tab gets a card.
+  await expect.poll(() => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)).toBe(false)
 
   await dispatch({ type: 'open', url: `${base}/after-paused-video` })
   await new Promise((r) => setTimeout(r, 1000))
@@ -1330,20 +1343,4 @@ test('Whole Page captures the full length of a page, past what is on screen', as
   expect(size.image.height / size.image.width).toBeGreaterThan(2)
   expect(size.attached).toBe(false)
   await dispatch({ type: 'close', id: (await space()).activeItemId! })
-})
-
-test('zz probe audible after pause', async () => {
-  await dispatch({ type: 'open', url: `${base}/video-page` })
-  const video = (await space()).activeItemId!
-  await expect.poll(() => isPlaying(video), { timeout: 10_000 }).toBe(true)
-  const audible = () => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)
-  const before: boolean[] = []
-  for (let i = 0; i < 6; i++) { before.push(await audible()); await new Promise((r) => setTimeout(r, 250)) }
-  await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('document.getElementById("v").pause()'), video)
-  const t0 = Date.now()
-  const after: string[] = []
-  for (let i = 0; i < 16; i++) { after.push(`${Date.now() - t0}:${await audible()}`); await new Promise((r) => setTimeout(r, 250)) }
-  const probe = await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('JSON.stringify([...document.querySelectorAll("video")].map(v => ({paused: v.paused, ended: v.ended})))'), video)
-  console.log('AUDIBLE before', before.join(','), '| after', after.join(' '), '| videos', probe)
-  await dispatch({ type: 'close', id: video })
 })
