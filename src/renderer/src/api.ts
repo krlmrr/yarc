@@ -58,14 +58,11 @@ function applyAppearance(): void {
 applyAppearance()
 systemDark.addEventListener('change', applyAppearance)
 
-export function setSpaceColors(color: string, color2 = color): void {
-  document.documentElement.style.setProperty('--space', color)
-  document.documentElement.style.setProperty('--space-2', color2)
-}
-
 export function useSpaceTheme(space: Pick<Space, 'color' | 'color2'> | undefined, appearance: Space['appearance']): void {
   useEffect(() => {
-    if (space?.color) setSpaceColors(space.color, space.color2)
+    if (!space?.color) return
+    document.documentElement.style.setProperty('--space', space.color)
+    document.documentElement.style.setProperty('--space-2', space.color2 ?? space.color)
   }, [space?.color, space?.color2])
   useEffect(() => {
     spaceAppearance = appearance

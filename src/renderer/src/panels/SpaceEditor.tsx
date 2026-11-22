@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { AppState } from '../../../shared/types'
-import { activeSpace, cx, dispatch, isMac, setSpaceColors } from '../api'
+import { cx, dispatch, isMac } from '../api'
 import { Icon } from '../icons'
 import { CustomColor } from './ColorPicker'
 import { firstGrapheme, SPACE_COLORS } from './util'
@@ -28,21 +28,9 @@ export function SpaceEditor({ state, close, spaceId }: { state: AppState; close:
   const [profileId, setProfileId] = useState<string>(space?.profileId ?? 'new')
   const [profileName, setProfileName] = useState('')
 
-  // Live-preview the colors; on unmount fall back to whatever the active space is by then.
-  const stateRef = useRef(state)
   useEffect(() => {
-    stateRef.current = state
-  })
-  useEffect(() => {
-    if (HEX.test(color)) setSpaceColors(color, HEX.test(color2) ? color2 : color)
+    if (HEX.test(color)) dispatch({ type: 'previewSpaceColors', spaceId: space?.id, color, color2: HEX.test(color2) ? color2 : undefined })
   }, [color, color2])
-  useEffect(
-    () => () => {
-      const s = activeSpace(stateRef.current)
-      setSpaceColors(s.color, s.color2)
-    },
-    []
-  )
 
   const fallbackName = `Space ${state.spaces.length + 1}`
   const usersOf = (id: string) => state.spaces.filter((s) => s.id !== space?.id && s.profileId === id)

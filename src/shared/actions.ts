@@ -45,6 +45,8 @@ export type Action =
   | { type: 'createSpace'; name: string; emoji?: string; color: string; color2?: string; profileId?: ID | 'new'; profileName?: string }
   /** `color2: ''` goes back to one color. */
   | { type: 'updateSpace'; id: ID; name?: string; emoji?: string; color?: string; color2?: string; profileId?: ID }
+  /** Shown until the space editor closes; saved only by `updateSpace`/`createSpace`. No `spaceId` = the space being created. */
+  | { type: 'previewSpaceColors'; spaceId?: ID; color: string; color2?: string }
   | { type: 'deleteSpace'; id: ID }
   | { type: 'renameProfile'; id: ID; name: string }
   /** `at`: next to a given pane instead of at the right of the split. */
