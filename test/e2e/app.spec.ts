@@ -7,11 +7,12 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Action } from '../../src/shared/actions'
-import type { AppState } from '../../src/shared/types'
+import type { AppState, PinnedFolder } from '../../src/shared/types'
 
 let app: ElectronApplication
 let server: Server
 let base = ''
+let feedPosts: string[] = []
 const userData = mkdtempSync(join(tmpdir(), 'yarc-e2e-'))
 
 const page = (name: string) =>
@@ -61,7 +62,12 @@ async function pageWithUrl(fragment: string): Promise<Page> {
 test.beforeAll(async () => {
   server = createServer((req, res) => {
     if (req.url === '/never-loads') return
+    if (req.url === '/feed.xml') {
+      res.setHeader('content-type', 'application/rss+xml')
+      return res.end(`<rss><channel>${feedPosts.map((p) => `<item><title>Post ${p}</title><link>${base}/post-${p}</link></item>`).join('')}</channel></rss>`)
+    }
     res.setHeader('content-type', 'text/html')
+    if (req.url === '/blog') return res.end('<!doctype html><title>Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">')
     if (req.url === '/still-loading') return res.end('<!doctype html><title>Still loading</title><img src="/never-loads">')
     res.end(req.url === '/video-page' ? VIDEO_PAGE : page((req.url ?? '/').slice(1) || 'home'))
   })
@@ -357,6 +363,28 @@ test('pinning keeps the saved URL; closing a pinned tab resets it', async () => 
   const after = s.pinned.find((n) => n.id === one.id)
   expect(after?.kind === 'tab' ? after.url : '').toBe(`${base}/one`)
   expect((await state()).live[one.id]).toBeUndefined()
+})
+
+test("a live folder fills itself from a site's feed, follows it on refresh, and goes with its tabs", async () => {
+  const folder = async () => (await space()).pinned.find((n): n is PinnedFolder => n.kind === 'folder' && !!n.live)
+  const posts = async () => (await folder())?.children.map((c) => (c.kind === 'tab' ? c.savedTitle : c.kind))
+  feedPosts = ['a', 'b']
+  await dispatch({ type: 'saveLiveFolder', name: '', source: { kind: 'feed', url: `${base}/blog` } })
+  await expect.poll(posts).toEqual(['Post a', 'Post b'])
+  expect((await folder())?.name).toBe('127.0.0.1')
+  const ui = await pageWithUrl('index.html')
+  await expect(ui.locator('.row.folder', { hasText: '127.0.0.1' })).toBeVisible()
+  await expect(ui.locator('.row', { hasText: 'Post b' })).toBeVisible()
+
+  const a = (await folder())!.children[0]
+  feedPosts = ['c', 'a']
+  await dispatch({ type: 'refreshLiveFolder', id: (await folder())!.id })
+  await expect.poll(posts).toEqual(['Post c', 'Post a'])
+  expect((await folder())!.children[1].id).toBe(a.id)
+
+  await dispatch({ type: 'deleteFolder', id: (await folder())!.id })
+  expect(await folder()).toBeUndefined()
+  expect((await space()).pinned.some((n) => n.id === a.id)).toBe(false)
 })
 
 test('links from a pinned tab to another site open in Peek', async () => {

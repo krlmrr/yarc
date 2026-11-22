@@ -17,6 +17,14 @@ export interface Spotlight {
 /** Newest first. */
 export const SPOTLIGHTS: Spotlight[] = [
   {
+    id: 'live-folders',
+    title: 'Folders that fill themselves',
+    text:
+      'A live folder in your sidebar keeps up with your open pull requests, the ones waiting for your review, a repository’s, ' +
+      'or any RSS or Atom feed. YARC asks GitHub with the space’s own login, so nothing passes through anyone else.',
+    actions: [{ label: 'New Live Folder', command: 'newLiveFolder' }]
+  },
+  {
     id: 'traffic-control',
     title: 'Links from other apps land in the right space',
     text:

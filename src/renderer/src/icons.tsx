@@ -21,6 +21,12 @@ const paths: Record<string, ReactNode> = {
   x: <path d="M6 6l12 12M18 6L6 18" />,
   chevron: <path d="M9 6l6 6-6 6" />,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  liveFolder: (
+    <>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M6.5 13.5h2.5l1.5-3 2 5 1.5-2h3.5" />
+    </>
+  ),
   canvas: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="3" />

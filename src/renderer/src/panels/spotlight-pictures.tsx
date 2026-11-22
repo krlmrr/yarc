@@ -90,7 +90,38 @@ function TrafficControl() {
   )
 }
 
+function LiveFolders() {
+  return (
+    <div className="lf-scene">
+      <div className="lf-source">
+        <b />
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="mini-window lf-window">
+        <div className="mini-sidebar">
+          <i />
+          <span className="lf-folder" />
+          <span className="lf-item" />
+          <span className="lf-item second" />
+          <span className="lf-item third" />
+          <i />
+        </div>
+        <div className="mini-page">
+          <div className="lf-page">
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const PICTURES: Record<string, () => ReactNode> = {
+  'live-folders': LiveFolders,
   'traffic-control': TrafficControl,
   canvases: Canvases,
   'floating-player': FloatingPlayer

@@ -11,6 +11,7 @@ import { activeSpace, arc, cx, dispatch, displayHost, isMac, shortcutLabel, useA
 import { Favicon, Icon, type IconName } from './icons'
 import { Tour, UpdateReady, WhatsNew } from './panels/Intro'
 import { Library } from './panels/Library'
+import { LiveFolderEditor } from './panels/LiveFolderEditor'
 import { Settings } from './panels/Settings'
 import { SharePicker } from './panels/SharePicker'
 import { SpaceEditor } from './panels/SpaceEditor'
@@ -81,6 +82,13 @@ function App() {
         <>
           <div className="scrim" onMouseDown={close} />
           <SpaceEditor key={`${key}-${mode.spaceId}`} state={state} close={close} spaceId={mode.spaceId} />
+        </>
+      )
+    case 'live-folder':
+      return (
+        <>
+          <div className="scrim" onMouseDown={close} />
+          <LiveFolderEditor key={`${key}-${mode.folderId}`} state={state} close={close} folderId={mode.folderId} />
         </>
       )
     case 'share-picker':
