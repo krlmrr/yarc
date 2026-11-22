@@ -611,7 +611,7 @@ function FolderRow({
         onDoubleClick={() => ctx.setEdit({ kind: 'renameFolder', id: node.id })}
         onContextMenu={() => dispatch({ type: 'folderMenu', id: node.id })}
       >
-        <Icon name="folder" size={16} />
+        <Icon name={node.live ? 'liveFolder' : 'folder'} size={16} />
         {editing ? (
           <RenameInput
             initial={node.name}
@@ -624,9 +624,14 @@ function FolderRow({
           <span className="title">{node.name}</span>
         )}
       </div>
-      {node.open && node.children.length > 0 ? (
+      {node.open && (node.children.length > 0 || node.live) ? (
         <div className="children">
           <PinnedList nodes={node.children} ctx={ctx} onDrop={onDrop} folderId={node.id} />
+          {node.live && (node.liveError || !node.children.length) ? (
+            <div className={cx('live-note', node.liveError && 'error')} onClick={() => dispatch({ type: 'refreshLiveFolder', id: node.id })} title="Refresh">
+              {node.liveError ?? 'Nothing here right now'}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </>

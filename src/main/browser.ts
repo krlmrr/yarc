@@ -24,11 +24,13 @@ import { join } from 'node:path'
 import type { Action, DropTarget } from '../shared/actions'
 import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
 import { commandForInput, validShortcuts, type CommandId } from '../shared/keymap'
-import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems } from '../shared/tree'
+import { cleanLiveSource, liveFolderName } from '../shared/live-folders'
+import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems, walkPinned } from '../shared/tree'
 import type {
   AppState,
   ExtensionInfo,
   ID,
+  LiveSource,
   OverlayMode,
   PinnedNode,
   PinnedTab,
@@ -56,6 +58,7 @@ import { findImportChoices, importChoices, runImport, type FoundChoice } from '.
 import { FLOATING_DEMO_URL } from './floating-demo'
 import { FloatingPlayer, type FloatAnchor, type FloatingHost } from './floating-player'
 import { LittleWindow } from './little'
+import { LiveFolders } from './live-folders'
 import { logInfo, logProblem, setLogContext } from './log'
 import { pauseMedia, probeMedia, toggleMedia } from './media-page'
 import { closeFloating, closed, dismiss, emptyMedia, float, left, minimize, shown, type LeftWith, type MediaState } from './media-state'
@@ -121,6 +124,7 @@ const COMMAND_ACTIONS: Partial<Record<CommandId, Action>> = {
   zoomOut: { type: 'zoom', delta: -1 },
   zoomReset: { type: 'zoom', delta: 0 },
   newFolder: { type: 'newFolder' },
+  newLiveFolder: { type: 'overlay', mode: { kind: 'live-folder' } },
   openInChrome: { type: 'openInChrome' },
   importArc: { type: 'import', source: 'arc' },
   importZen: { type: 'import', source: 'zen' },
@@ -167,6 +171,7 @@ export class Browser implements TabHost, FloatingHost {
   private reportedLost: WindowSession | undefined
   readonly live = new Map<ID, LiveTab>()
   readonly canvases = new Canvases(this)
+  private readonly liveFolders = new LiveFolders(this)
   private media: MediaState = emptyMedia()
   private readonly floating = new FloatingPlayer(this)
   private onScreen = new Set<ID>()
@@ -268,6 +273,7 @@ export class Browser implements TabHost, FloatingHost {
       this.closeIdleLittles()
     }, HOUSEKEEPING_EVERY)
     this.autoArchive()
+    this.liveFolders.start()
     this.updater.sync()
     this.showStartupScreen()
   }
@@ -1324,7 +1330,7 @@ export class Browser implements TabHost, FloatingHost {
     else if (to.section === 'today') target = space.today
     else {
       const folder = to.folderId ? findFolder(space, to.folderId) : undefined
-      if (folder && containsNode(node as PinnedNode, folder.id)) return
+      if (folder && (folder.live || containsNode(node as PinnedNode, folder.id))) return
       target = folder ? folder.children : space.pinned
     }
     if (isFolder && to.section !== 'pinned') return
@@ -1502,6 +1508,38 @@ export class Browser implements TabHost, FloatingHost {
     }
     if (this.state.activeSpaceId === id) this.switchSpace(this.state.spaces[0].id)
     else this.changed()
+  }
+
+  private saveLiveFolder(space: Space, id: ID | undefined, name: string, source: LiveSource): void {
+    const live = cleanLiveSource(source)
+    if (!live) return this.toast('That address can’t be used as a feed')
+    let folder = id ? findFolder(space, id) : undefined
+    if (id && !folder) return
+    if (!folder) {
+      folder = { kind: 'folder', id: newId(), name: '', open: true, children: [] }
+      space.pinned.unshift(folder)
+    }
+    folder.name = name.trim() || liveFolderName(live)
+    if (JSON.stringify(folder.live) !== JSON.stringify(live)) {
+      folder.live = live
+      folder.liveError = undefined
+    }
+    this.changed()
+    void this.liveFolders.refresh(folder.id)
+  }
+
+  /** For tabs already taken out of the sidebar. */
+  private forgetPinned(space: Space, nodes: PinnedNode[]): void {
+    const wasActive = space.activeItemId
+    for (const n of walkPinned(nodes)) {
+      if (n.kind !== 'tab') continue
+      this.dropLive(n.id)
+      space.splits = removeFromSplits(space.splits, n.id)
+      this.mru = this.mru.filter((m) => m !== n.id)
+      if (space.activeItemId === n.id) space.activeItemId = this.nextActiveAfter(space, n.id)
+    }
+    if (space.activeItemId !== wasActive && space.activeItemId) return this.activate(space.activeItemId)
+    this.relayout()
   }
 
   handleInput(e: Event, input: Input): void {
@@ -1701,6 +1739,7 @@ export class Browser implements TabHost, FloatingHost {
       case 'toggleFolder': {
         const f = findFolder(space, a.id)
         if (f) f.open = !f.open
+        if (f?.open && f.live) this.liveFolders.opened(f.id)
         return this.changed()
       }
       case 'renameFolder': {
@@ -1712,9 +1751,17 @@ export class Browser implements TabHost, FloatingHost {
         const hit = findInPinned(space.pinned, a.id)
         const f = hit?.list[hit.index]
         if (!hit || f?.kind !== 'folder') return
-        hit.list.splice(hit.index, 1, ...f.children)
-        return this.changed()
+        if (!f.live) {
+          hit.list.splice(hit.index, 1, ...f.children)
+          return this.changed()
+        }
+        hit.list.splice(hit.index, 1)
+        return this.forgetPinned(space, f.children)
       }
+      case 'saveLiveFolder':
+        return this.saveLiveFolder(space, a.id, a.name, a.source)
+      case 'refreshLiveFolder':
+        return void this.liveFolders.refresh(a.id)
       case 'switchSpace':
         return this.switchSpace(a.id)
       case 'switchSpaceRelative': {

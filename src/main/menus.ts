@@ -325,9 +325,21 @@ export function buildCanvasMenu(browser: Browser, id: string): Menu | undefined 
 export function buildFolderMenu(browser: Browser, id: string): Menu | undefined {
   const folder = findFolder(browser.store.activeSpace, id)
   if (!folder) return undefined
+  const toggle: MenuItemConstructorOptions = { label: folder.open ? 'Collapse Folder' : 'Expand Folder', click: () => void browser.dispatch({ type: 'toggleFolder', id }) }
+  const rename: MenuItemConstructorOptions = { label: 'Rename…', click: () => requestEdit(browser, { kind: 'renameFolder', id }) }
+  if (folder.live) {
+    return Menu.buildFromTemplate([
+      toggle,
+      { label: 'Refresh Now', click: () => void browser.dispatch({ type: 'refreshLiveFolder', id }) },
+      { label: 'Edit Live Folder…', click: () => browser.setOverlay({ kind: 'live-folder', folderId: id }) },
+      rename,
+      { type: 'separator' },
+      { label: 'Delete Live Folder', click: () => void browser.dispatch({ type: 'deleteFolder', id }) }
+    ])
+  }
   return Menu.buildFromTemplate([
-    { label: folder.open ? 'Collapse Folder' : 'Expand Folder', click: () => void browser.dispatch({ type: 'toggleFolder', id }) },
-    { label: 'Rename…', click: () => requestEdit(browser, { kind: 'renameFolder', id }) },
+    toggle,
+    rename,
     { type: 'separator' },
     { label: 'Delete Folder (keep tabs)', click: () => void browser.dispatch({ type: 'deleteFolder', id }) }
   ])

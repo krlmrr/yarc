@@ -28,7 +28,14 @@ export interface PinnedFolder {
   name: string
   open: boolean
   children: PinnedNode[]
+  /** Set on a live folder, whose children come from it (src/main/live-folders.ts). */
+  live?: LiveSource
+  /** Why the last refresh failed; cleared by the next one that works. */
+  liveError?: string
 }
+
+/** `query` uses GitHub's own search syntax, e.g. `is:pr is:open author:@me`. */
+export type LiveSource = { kind: 'github'; query: string } | { kind: 'feed'; url: string }
 
 /** Its contents are files in its profile's folder (src/main/canvas-store.ts), not in state.json. */
 export interface PinnedCanvas {
@@ -280,6 +287,8 @@ export type OverlayMode =
   | { kind: 'settings'; section?: SettingsSection }
   | { kind: 'library'; tab?: 'archive' | 'history' | 'downloads' | 'spaces' }
   | { kind: 'space-editor'; spaceId?: ID }
+  /** No `folderId` = a new one. */
+  | { kind: 'live-folder'; folderId?: ID }
   | { kind: 'sidebar' }
   | { kind: 'switcher'; order: ID[]; index: number }
   /** The overlay draws the dimmed backdrop and Peek's buttons beside `card`. */

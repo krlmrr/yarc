@@ -1,5 +1,5 @@
 import type { Side } from './split'
-import type { ID, OverlayMode, Rect, SearchEngine, Settings, SplitAt } from './types'
+import type { ID, LiveSource, OverlayMode, Rect, SearchEngine, Settings, SplitAt } from './types'
 
 /** `index` is within the target list. */
 export type DropTarget =
@@ -34,7 +34,11 @@ export type Action =
   | { type: 'newFolder'; name?: string }
   | { type: 'toggleFolder'; id: ID }
   | { type: 'renameFolder'; id: ID; name: string }
+  /** A live folder goes with its tabs; any other folder leaves them in its place. */
   | { type: 'deleteFolder'; id: ID }
+  /** No `id` = a new live folder at the top of Pinned. */
+  | { type: 'saveLiveFolder'; id?: ID; name: string; source: LiveSource }
+  | { type: 'refreshLiveFolder'; id: ID }
   | { type: 'switchSpace'; id: ID }
   | { type: 'switchSpaceRelative'; delta: 1 | -1 }
   | { type: 'switchSpaceIndex'; index: number }

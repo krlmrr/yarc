@@ -70,6 +70,7 @@ Links from other apps open in a small window. Close it, or keep the page with **
 ### And
 
 - **Pinned tabs** remember their page; `⌘W` only unloads them.
+- **Live folders** fill themselves with your GitHub pull requests or any RSS feed, fetched with your own login.
 - **Today tabs** archive themselves after 12 hours (or 24 hours, 7 days, 30 days, never).
 - **Ads and trackers** are blocked out of the box.
 - **Chrome extensions** from the Chrome Web Store, per profile.

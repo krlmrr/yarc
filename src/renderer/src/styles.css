@@ -502,6 +502,18 @@ browser-action-list::part(action):hover {
   gap: 2px;
 }
 
+.live-note {
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-3);
+  cursor: default;
+}
+
+.live-note.error {
+  color: var(--text-2);
+}
+
 .divider {
   display: flex;
   align-items: center;

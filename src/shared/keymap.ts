@@ -42,6 +42,7 @@ export type CommandId =
   | 'trafficControl'
   | 'newSpace'
   | 'newFolder'
+  | 'newLiveFolder'
   | 'duplicate'
   | 'openInChrome'
   | 'importArc'
@@ -120,6 +121,7 @@ export const BINDINGS: Binding[] = [
   { id: 'trafficControl', title: 'Traffic Control Settings', mac: [], other: [], palette: true },
   { id: 'newSpace', title: 'New Space', mac: [], other: [], palette: true },
   { id: 'newFolder', title: 'New Folder', ...both('Mod+Alt+Shift+N'), palette: true },
+  { id: 'newLiveFolder', title: 'New Live Folder (GitHub Pull Requests or a Feed)', mac: [], other: [], palette: true },
   { id: 'duplicate', title: 'Duplicate Tab', ...both('Mod+Shift+D'), palette: true },
   { id: 'openInChrome', title: 'Open in Chrome', ...both('Mod+Alt+O'), palette: true },
   { id: 'importArc', title: 'Import from Arc', mac: [], other: [], palette: true },
