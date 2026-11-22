@@ -23,20 +23,14 @@ const endTour = () => dispatch({ type: 'endTour' })
 
 function App() {
   const state = useAppState()
-  const mode = useOverlayMode()
+  const { mode, opened } = useOverlayMode()
   const space = state ? activeSpace(state) : undefined
   // Only the revealed sidebar takes the space's appearance; the command bar and panels follow the system.
   useSpaceTheme(space, mode.kind === 'sidebar' ? space?.appearance : undefined)
-  // Remount panels each time they open so inputs start fresh.
-  const [generation, setGeneration] = useState(0)
-  const last = useRef<OverlayMode['kind']>('none')
-  useEffect(() => {
-    if (mode.kind !== last.current) setGeneration((g) => g + 1)
-    last.current = mode.kind
-  }, [mode])
 
   if (!state || mode.kind === 'none') return null
-  const key = `${mode.kind}-${generation}`
+  // Remount panels each time they open so inputs start fresh.
+  const key = `${mode.kind}-${opened}`
   switch (mode.kind) {
     case 'sidebar':
       return (
