@@ -684,13 +684,14 @@ are what catch them.
 1. **Electron publishes** a patch, e.g. `45.2.2`.
 2. **Dependabot** (`.github/dependabot.yml`) checks npm daily and opens a PR for it. `electron` is
    in its own group, so its PR never waits on another package's.
-3. **CI** (`ci.yml`, the `check` job) typechecks, tests and builds the PR.
+3. **CI** (`ci.yml`): the `check` job typechecks, tests and builds the PR; the `e2e` job drives the
+   built app on Ubuntu, Windows and macOS. The `main` ruleset requires `check` and all three `e2e` runs.
 4. **Auto-merge** (`.github/workflows/dependabot-automerge.yml`): if the PR is Dependabot's and a
    semver *patch* or *minor* (`dependabot/fetch-metadata`; for a group, its biggest bump), it runs
-   `gh pr merge --auto --merge`, so the PR merges once `check` passes. This covers every package,
+   `gh pr merge --auto --squash`, so the PR merges once that CI passes. This covers every package,
    not just `electron`, but only `electron` bumps are released (step 5); the others get the
-   `release:skip` label and ship with the next real change. Majors wait for a person, because CI
-   doesn't run the e2e tests. Against
+   `release:skip` label and ship with the next real change. Majors wait for a person, because a
+   major can break the app in ways the e2e tests don't cover. Against
    supply-chain attacks, Dependabot only proposes a new version of any package, `electron`
    included, once it has been out for a day (`cooldown` in `.github/dependabot.yml`; security
    updates skip it). That also matches pnpm, which refuses packages published less than a day ago
@@ -722,7 +723,7 @@ Gaps:
 - Once Electron has a newer major, Dependabot proposes that major instead of the next patch on
   ours, and majors aren't auto-merged. Merge the major (by hand, after a look) to get patch
   auto-merges back.
-- If `check` fails on a Dependabot PR, nothing ships until someone fixes it.
+- If `check` or `e2e` fails on a Dependabot PR, nothing ships until someone fixes it.
 - Dependabot alerts and security updates are on too, for advisories on other packages.
 
 ---
