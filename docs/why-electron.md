@@ -12,7 +12,7 @@ YARC is built on [Electron](https://www.electronjs.org/): Chromium plus Node.js,
 ## What it costs
 
 - **No Netflix, Disney+ or Spotify web.** Stock Electron has no Widevine module, and adding one needs a licence from Google and a different Electron build.
-- **Manifest V3 ad blockers can't block.** Electron has no `declarativeNetRequest`, so uBlock Origin Lite installs but does nothing. YARC blocks ads and trackers itself instead. Manifest V2 extensions aren't supported either.
+- **Some extension APIs are YARC's own work.** Electron's `declarativeNetRequest` ignores the rule lists extensions ship, so YARC implements its own to let Manifest V3 blockers like uBlock Origin Lite block. Manifest V2 extensions aren't supported.
 - **No Chrome Sync.** Google only lets Chrome use it, so YARC imports from Chrome instead.
 - **New Chromium features arrive a little later.** Electron takes a new Chromium major every 8 weeks; on 2026-11-21 Electron 45 ran Chromium 156 while Chrome was on 158. Security fixes don't wait for that.
 

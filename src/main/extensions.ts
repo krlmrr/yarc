@@ -4,10 +4,15 @@ import { installChromeWebStore, updateExtensions } from 'electron-chrome-web-sto
 import { join } from 'node:path'
 import type { ID } from '../shared/types'
 import type { Browser } from './browser'
-import type { ProfileRuntime } from './profiles'
+import { NetRules } from './declarative-net-request'
+import { ExtensionGrants, type Grant } from './extension-grants'
+import { listenBeforeSendHeaders, type ProfileRuntime } from './profiles'
 import type { LiveTab } from './tab'
 
 const UPDATE_EVERY = 5 * 3600_000
+
+/** electron-chrome-extensions 4.10 keeps runtime grants in a private map; reaching it is the only way to restore them. */
+type LibraryInternals = { api?: { permissions?: { permissionMap?: Map<string, Grant> } } }
 
 export class Extensions {
   private byProfile = new Map<ID, ElectronChromeExtensions>()
@@ -22,6 +27,17 @@ export class Extensions {
 
   async setup(rt: ProfileRuntime): Promise<void> {
     const b = this.browser
+    const grants = new ExtensionGrants(join(b.profiles.dir(rt.id), 'extension-permissions.json'))
+    const rules = new NetRules(
+      rt.session,
+      join(b.profiles.dir(rt.id), 'Extension Rules'),
+      (wanted) => listenBeforeSendHeaders(rt.session, wanted ? (details, headers) => rules.requestHeaders(details, headers) : undefined),
+      (id) => grants.get(id)?.origins ?? []
+    )
+    // Before the library's preload, which freezes `chrome`.
+    const dnrPreload = join(__dirname, '../preload/extension-dnr.js')
+    rt.session.registerPreloadScript({ id: 'yarc-dnr', type: 'frame', filePath: dnrPreload })
+    rt.session.registerPreloadScript({ id: 'yarc-dnr-sw', type: 'service-worker', filePath: dnrPreload })
     const ext = new ElectronChromeExtensions({
       session: rt.session,
       createTab: async (details) => {
@@ -45,8 +61,16 @@ export class Extensions {
       },
       removeWindow: (win) => {
         if (!win.isDestroyed() && !b.isMainWindow(win)) win.close()
+      },
+      // As the library does without this hook, every request is granted; here it's also remembered.
+      requestPermissions: async (extension, request) => {
+        grants.add(extension, request)
+        return true
       }
     })
+    // After the library's own listener, which resets an extension's grants to its manifest.
+    const granted = (ext as unknown as LibraryInternals).api?.permissions?.permissionMap
+    rt.session.extensions.on('extension-loaded', (_e, extension) => grants.restore(granted?.get(extension.id), extension.id))
     this.byProfile.set(rt.id, ext)
     // After the library's preload (registered above), so `chrome` already has its APIs to copy.
     const filePath = join(__dirname, '../preload/extension-browser.js')

@@ -73,7 +73,7 @@ Links from other apps open in a small window. Close it, or keep the page with **
 - **Live folders** fill themselves with your GitHub pull requests or any RSS feed, fetched with your own login.
 - **Today tabs** archive themselves after 12 hours (or 24 hours, 7 days, 30 days, never).
 - **Ads and trackers** are blocked out of the box.
-- **Chrome extensions** from the Chrome Web Store, per profile.
+- **Chrome extensions** from the Chrome Web Store, per profile, Manifest V3 ad blockers included.
 - **Several windows**, all with the same sidebar.
 - **Import** from Arc, Zen, Chrome, Edge and Brave.
 - Find in page, a `Ctrl+Tab` switcher, the Library, light and dark themes, and *Open in Chrome* for the odd site that needs it.
@@ -185,7 +185,7 @@ Google only lets Chrome use Chrome Sync, so use *Import from Chrome* once instea
 It's real Chromium, so sites and Chrome extensions work as in Chrome, and Chromium's security fixes reach you within days, without a one-person project maintaining a fork. Per page it uses the same memory as Chrome: with 8 pages open, Chrome used 746 MB and YARC 844 MB, the difference being YARC's sidebar, panels and ad blocker. [Why Electron, and how we measured](docs/why-electron.md).
 
 **Do I need an ad-blocker extension?**
-No, blocking is built in. Manifest V3 blockers like uBlock Origin Lite can't block in Electron anyway.
+No, blocking is built in. If you'd rather use your own, Manifest V3 blockers like uBlock Origin Lite block too.
 
 **Who makes YARC?**
 One person, in their spare time. YARC is independent and not affiliated with The Browser Company; "Arc" is their trademark.
@@ -199,6 +199,7 @@ One person, in their spare time. YARC is independent and not affiliated with The
 | Sidebar, spaces, settings | `state.json` | `state.json` |
 | History, per profile | `Profiles/<id>/history.sqlite` | same |
 | Extensions, per profile | `Profiles/<id>/Extensions` | same |
+| Extensions' blocking rules, per profile | `Profiles/<id>/Extension Rules` | same |
 | Canvases (deleted ones stay in `.trash` for 30 days) | `Profiles/<id>/Canvases` | same |
 | Cookies, site storage, cache | `Partitions/profile-<id>` | same |
 | Error log | `logs\main.log` | `~/Library/Logs/YARC/main.log` |

@@ -1,10 +1,11 @@
 // Not enableBlockingInSession(): it registers global IPC handlers per session (a second profile throws).
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
-import { ipcMain, utilityProcess, type InsertCSSOptions, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session, type WebContents } from 'electron'
+import { ipcMain, utilityProcess, type HeadersReceivedResponse, type InsertCSSOptions, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session, type WebContents } from 'electron'
 import { readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import type { Settings } from '../shared/types'
+import { netRulesFor } from './declarative-net-request'
 
 const PRELOAD = createRequire(__filename).resolve('@ghostery/adblocker-electron-preload')
 const FILTERS_MAX_AGE = 24 * 3600_000
@@ -63,13 +64,18 @@ export class AdBlock {
     if (this.sessions.has(session)) return
     this.sessions.add(session)
     session.registerPreloadScript({ type: 'frame', filePath: PRELOAD })
+    // Electron keeps one listener per event: extensions' declarativeNetRequest rules go through this one too.
     session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+      const byExtension = netRulesFor(session)?.beforeRequest(details)
+      if (byExtension) return callback(byExtension)
       if (!this.engine || !this.activeForRequest(details)) return callback({})
       this.engine.onBeforeRequest(details, callback)
     })
     session.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, callback) => {
-      if (!this.engine || !this.activeForRequest(details)) return callback({})
-      this.engine.onHeadersReceived(details, callback)
+      const rules = netRulesFor(session)
+      const done = rules ? (response: HeadersReceivedResponse) => callback(rules.headersReceived(details, response)) : callback
+      if (!this.engine || !this.activeForRequest(details)) return done({})
+      this.engine.onHeadersReceived(details, done)
     })
   }
 
