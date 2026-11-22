@@ -1270,7 +1270,8 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
   await dispatch({ type: 'open', url: `${base}/dnr-page`, where: 'tab' })
   const tabId = (await space()).activeItemId!
   try {
-    await expect.poll(() => hits.includes('/dnr-page') && hits.includes('/dnr-kept.js'), { timeout: 15_000 }).toBe(true)
+    // The redirect is an extra hop, so its script can come after the last one in the page.
+    await expect.poll(() => hits.includes('/dnr-kept.js') && hits.includes('/dnr-redirected.js'), { timeout: 15_000 }).toBe(true)
     expect(scripts.filter((s) => hits.includes(s))).toEqual(['/dnr-redirected.js', '/dnr-kept.js'])
   } finally {
     await dispatch({ type: 'close', id: tabId })
