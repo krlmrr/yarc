@@ -89,7 +89,7 @@ Details and gaps are in [docs/electron-notes.md](electron-notes.md#6-security-up
 
 ## Contributing
 
-Before opening a PR, run `pnpm typecheck && pnpm test && pnpm test:e2e`. `main` only accepts pull requests whose CI (`check`) passes, and every PR needs a `## What's New` section. [arc-reference.md](arc-reference.md) collects what we know about Arc's behavior; corrections are welcome.
+Before opening a PR, run `pnpm typecheck && pnpm test && pnpm test:e2e`. `main` only accepts pull requests whose CI passes (`check`, and `e2e` on Ubuntu, Windows and macOS), and every PR needs a `## What's New` section. [arc-reference.md](arc-reference.md) collects what we know about Arc's behavior; corrections are welcome.
 
 ## README pictures
 
