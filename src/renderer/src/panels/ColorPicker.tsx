@@ -72,7 +72,9 @@ export function CustomColor({ color, onChange }: { color: string; onChange: (hex
               const t = e.target.value.trim()
               const hex = (t.startsWith('#') ? t : `#${t}`).toLowerCase()
               setText(t)
-              if (HEX.test(hex)) onChange(hex)
+              if (!HEX.test(hex)) return
+              setHsv(hexToHsv(hex))
+              onChange(hex)
             }}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return

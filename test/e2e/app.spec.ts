@@ -756,13 +756,13 @@ test('Little Window reopens a page with the profile picked on its chip, remember
   // The user resizes it, closes it, and opens the site again: same profile, same size.
   await app.evaluate((_e, url) => {
     const l = (globalThis as any).arcBrowser.openLittles().find((l: any) => l.url === url)
-    l.win.setSize(1010, 710)
+    l.win.setSize(720, 520)
     l.win.emit('resized')
     l.win.close()
   }, url)
   await expect.poll(async () => (await littles()).length).toBe(0)
   await dispatch({ type: 'littleArc', url })
-  await expect.poll(async () => (await littles()).find((l) => l.url === url)).toMatchObject({ profile: 'p-little', size: [1010, 710] })
+  await expect.poll(async () => (await littles()).find((l) => l.url === url)).toMatchObject({ profile: 'p-little', size: [720, 520] })
 
   await app.evaluate(() => {
     const b = (globalThis as any).arcBrowser
@@ -904,7 +904,7 @@ test('Traffic Control opens matching links from other apps in their space instea
   expect((await state()).settings.linkRoutes).toEqual([{ match: `${new URL(base).host}/routed`, spaceId: other.id }])
   launchSecondInstance(`${base}/routed/page`)
   await expect.poll(async () => (await state()).activeSpaceId, { timeout: 15_000 }).toBe(other.id)
-  expect((await space()).today[0].url).toBe(`${base}/routed/page`)
+  await expect.poll(async () => (await space()).today[0]?.url).toBe(`${base}/routed/page`)
   expect(await app.evaluate(() => (globalThis as any).arcBrowser.openLittles().length)).toBe(0)
   await dispatch({ type: 'settings', patch: { linkRoutes: [] } })
   await dispatch({ type: 'switchSpace', id: home })
