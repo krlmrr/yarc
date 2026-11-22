@@ -1193,8 +1193,12 @@ test('a video paused before you leave its tab gets no player and no card', async
   await expect.poll(() => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)).toBe(false)
 
   await dispatch({ type: 'open', url: `${base}/after-paused-video` })
-  await new Promise((r) => setTimeout(r, 1000))
-  expect((await state()).media).toEqual({ cards: [], floating: undefined, videos: [] })
+  await new Promise((r) => setTimeout(r, 1500))
+  const tab = await app.evaluate((_e, id) => {
+    const t = (globalThis as any).arcBrowser.live.get(id)
+    return `video ${id}: playing ${t.playing}, audible ${t.wc.isCurrentlyAudible()}`
+  }, video)
+  expect((await state()).media, tab).toEqual({ cards: [], floating: undefined, videos: [] })
   await dispatch({ type: 'close', id: video })
 })
 

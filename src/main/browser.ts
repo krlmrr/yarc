@@ -87,6 +87,8 @@ const HOUSEKEEPING_EVERY = 5 * 60_000
 // Slack past the revealed sidebar's edge: room to grab it to resize, and no enter/leave flicker at the screen's edge.
 const SIDEBAR_REVEAL_GRACE_PX = 32
 const SIDEBAR_REVEAL_HIDE_DELAY_MS = 300
+// Chromium still reports a tab audible for a moment after its media paused; only sound that lasts gets a card.
+const AUDIBLE_SETTLE_MS = 500
 // Sidebar geometry, kept in step with styles.css.
 const SIDEBAR_PAD = 8
 const FLOATING_SIDEBAR_INSET = 4
@@ -832,6 +834,7 @@ export class Browser implements TabHost, FloatingHost {
     const tab = this.live.get(id)
     if (!tab || tab.destroyed || (!tab.playing && !tab.wc.isCurrentlyAudible())) return
     const found = await probeMedia(tab.wc)
+    if (found === null && !tab.playing) await new Promise((r) => setTimeout(r, AUDIBLE_SETTLE_MS))
     const still = () => this.outOfSight(id, tab)
     if (!still()) return
     const playing: LeftWith = found === null ? (tab.wc.isCurrentlyAudible() ? 'audio' : 'nothing') : found === 'audio' ? 'audio' : 'video'
