@@ -1,6 +1,6 @@
 import { net } from 'electron'
 import { BINDINGS } from '../shared/keymap'
-import { spaceItems } from '../shared/tree'
+import { spaceItems, tabTitle } from '../shared/tree'
 import type { SearchResult } from '../shared/types'
 import { SEARCH_ENGINES, toUrl } from '../shared/url'
 import type { Browser } from './browser'
@@ -19,7 +19,7 @@ export function search(browser: Browser, raw: string): SearchResult[] {
     for (const item of spaceItems(state, space)) {
       if (seen.has(item.id)) continue
       seen.add(item.id)
-      const title = item.savedTitle || live.get(item.id)?.wc.getTitle() || item.title
+      const title = tabTitle(item, live.get(item.id)?.wc.getTitle())
       const url = item.url
       const isFav = state.profiles.some((p) => p.favorites.includes(item))
       const result: SearchResult = {

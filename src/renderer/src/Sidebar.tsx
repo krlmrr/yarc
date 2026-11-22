@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import type { DropTarget } from '../../shared/actions'
 import type { EditRequest } from '../../shared/ipc'
-import { MAX_PANES, paneIds } from '../../shared/split'
-import { isAwayFromSaved, spaceItems } from '../../shared/tree'
+import { MAX_PANES, paneIds, splitRows } from '../../shared/split'
+import { isAwayFromSaved, spaceItems, tabTitle } from '../../shared/tree'
 import { SIDEBAR_WIDTH, type AppState, type ID, type PinnedCanvas, type PinnedNode, type Space, type TabItem, type UpdateStatus } from '../../shared/types'
 import { activeSpace, arc, cx, dispatch, displayHost, isMac } from './api'
 import { Favicon, Icon } from './icons'
@@ -32,7 +32,7 @@ interface Ctx {
 }
 
 function itemTitle(state: AppState, item: TabItem): string {
-  return item.savedTitle || state.live[item.id]?.title || item.title || displayHost(item.url)
+  return tabTitle(item, state.live[item.id]?.title) || displayHost(item.url)
 }
 
 function readDrag(e: DragEvent): string | undefined {
@@ -388,21 +388,6 @@ function PinnedList({ nodes, ctx, onDrop, folderId }: { nodes: PinnedNode[]; ctx
   return <SidebarList list={nodes} ctx={ctx} section="pinned" folderId={folderId} onDrop={onDrop} />
 }
 
-/** `rows`: each split's first tab in this list → its tabs here; `hidden`: the others, drawn in that row. */
-function splitRows(space: Space, list: { id: ID }[]): { rows: Map<ID, ID[]>; hidden: Set<ID> } {
-  const rows = new Map<ID, ID[]>()
-  const hidden = new Set<ID>()
-  const inList = new Set(list.map((x) => x.id))
-  for (const sp of space.splits) {
-    const ids = paneIds(sp.root).filter((id) => inList.has(id))
-    if (ids.length < 2) continue
-    const first = list.find((x) => ids.includes(x.id))!.id
-    rows.set(first, ids)
-    for (const id of ids) if (id !== first) hidden.add(id)
-  }
-  return { rows, hidden }
-}
-
 function SidebarList({
   list,
   ctx,
@@ -416,7 +401,7 @@ function SidebarList({
   folderId?: ID
   onDrop: (e: DragEvent, to: DropTarget) => void
 }) {
-  const { rows, hidden } = splitRows(ctx.space, list)
+  const { rows, hidden } = splitRows(ctx.space.splits, list)
   return (
     <>
       {list.map((n, i) => {

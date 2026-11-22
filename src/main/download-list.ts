@@ -2,7 +2,7 @@ import { app, dialog, shell, type BaseWindow, type Session, type WebContents } f
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DownloadItemInfo, ID } from '../shared/types'
-import { hostOf } from './adblock'
+import { hostOf } from '../shared/url'
 import { DownloadBurst, isDangerous, markFromInternet } from './downloads'
 import { newId } from './store'
 

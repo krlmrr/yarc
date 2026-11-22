@@ -1,4 +1,5 @@
 // End-to-end tests against the built app (run `pnpm build` first; `pnpm test:e2e` does).
+import { ElectronBlocker } from '@ghostery/adblocker-electron'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -15,6 +16,9 @@ let base = ''
 let feedPosts: string[] = []
 const hits: string[] = []
 const userData = mkdtempSync(join(tmpdir(), 'yarc-e2e-'))
+// Fresh, so the app doesn't download the real filter lists.
+mkdirSync(join(userData, 'adblock'))
+writeFileSync(join(userData, 'adblock', 'engine.bin'), ElectronBlocker.parse('||doubleclick.net^\n||googlesyndication.com^').serialize())
 
 const page = (name: string) =>
   `<!doctype html><title>Page ${name}</title><h1>${name}</h1>` +
@@ -50,6 +54,17 @@ const space = async () => {
   const s = await state()
   return s.spaces.find((x) => x.id === s.activeSpaceId)!
 }
+
+const overlayKind = (): Promise<string> => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
+
+const captureNextMenu = (name: string) =>
+  app.evaluate(({ Menu }, name) => {
+    const popup = Menu.prototype.popup
+    Menu.prototype.popup = function (this: Electron.Menu) {
+      ;(globalThis as any)[name] = this
+      Menu.prototype.popup = popup
+    }
+  }, name)
 
 async function pageWithUrl(fragment: string): Promise<Page> {
   let found: Page | undefined
@@ -95,15 +110,9 @@ test('starts with a default space and the sidebar', async () => {
 
 test("clicking the current space's icon opens its menu", async () => {
   const ui = await pageWithUrl('index.html')
-  await app.evaluate(({ Menu }) => {
-    const popup = Menu.prototype.popup
-    Menu.prototype.popup = function (this: Electron.Menu) {
-      ;(globalThis as any).poppedMenu = this.items.map((i) => i.label)
-      Menu.prototype.popup = popup
-    }
-  })
+  await captureNextMenu('poppedMenu')
   await ui.locator('.space-dot.active').click()
-  await expect.poll(() => app.evaluate(() => (globalThis as any).poppedMenu)).toContain('Edit Space…')
+  await expect.poll(() => app.evaluate(() => (globalThis as any).poppedMenu?.items.map((i: Electron.MenuItem) => i.label))).toContain('Edit Space…')
 })
 
 test("the space editor's own color picker sets a custom color, and a second color ends the sidebar's gradient", async () => {
@@ -172,17 +181,11 @@ test('the menu button opens Settings on Windows and Linux; macOS has the menu ba
   const ui = await pageWithUrl('index.html')
   const button = ui.locator('.topbar button[title="Menu"]')
   if (process.platform === 'darwin') return expect(button).toHaveCount(0)
-  await app.evaluate(({ Menu }) => {
-    const popup = Menu.prototype.popup
-    Menu.prototype.popup = function (this: Electron.Menu) {
-      ;(globalThis as any).appMenu = this
-      Menu.prototype.popup = popup
-    }
-  })
+  await captureNextMenu('appMenu')
   await button.click()
   await expect.poll(() => app.evaluate(() => !!(globalThis as any).appMenu)).toBe(true)
   await app.evaluate(() => (globalThis as any).appMenu.items.find((i: Electron.MenuItem) => i.label === 'Settings…').click())
-  await expect.poll(() => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)).toBe('settings')
+  await expect.poll(overlayKind).toBe('settings')
   await dispatch({ type: 'overlay', mode: { kind: 'none' } })
 })
 
@@ -209,12 +212,13 @@ const mod = process.platform === 'darwin' ? 'meta' : 'control'
 
 test('keyboard shortcut Ctrl/Cmd+T opens the command bar from a web page', async () => {
   await pageWithUrl('/one')
+  const before = (await space()).today.map((t) => t.url)
   await pressInActiveTab('T', [mod])
   const overlay = await pageWithUrl('overlay.html')
   await expect(overlay.locator('.command input')).toBeVisible()
   await overlay.locator('.command input').fill(`${base}/two`)
   await overlay.locator('.command input').press('Enter')
-  await expect.poll(async () => (await space()).today.map((t) => t.url)).toEqual([`${base}/two`, `${base}/one`])
+  await expect.poll(async () => (await space()).today.map((t) => t.url)).toEqual([`${base}/two`, ...before])
 })
 
 test('command bar finds and switches to open tabs', async () => {
@@ -243,7 +247,7 @@ test('the command bar stays open while a page behind it finishes loading', async
   await dispatch({ type: 'overlay', mode: { kind: 'command', target: 'tab' } })
   await expect.poll(async () => (await state()).live[(await space()).activeItemId!]?.loading).toBe(false)
   await new Promise((r) => setTimeout(r, 500))
-  expect(await app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)).toBe('command')
+  expect(await overlayKind()).toBe('command')
   await dispatch({ type: 'overlay', mode: { kind: 'none' } })
   await dispatch({ type: 'close', id: (await space()).activeItemId! })
   await dispatch({ type: 'activate', id: previous })
@@ -454,7 +458,7 @@ test('favorites live at the top and belong to the profile', async () => {
   const profile = s.profiles.find((p) => p.id === (s.spaces.find((x) => x.id === s.activeSpaceId)!.profileId))!
   expect(profile.favorites.map((f) => f.id)).toContain(two.id)
   const ui = await pageWithUrl('index.html')
-  await expect(ui.locator('.favorite')).toHaveCount(1)
+  await expect(ui.locator('.favorite')).toHaveCount(profile.favorites.length)
 })
 
 test('switching tabs ends a rename started by a double-click, and the row stays clickable', async () => {
@@ -676,7 +680,7 @@ test('the tour imports the ticked browsers, each into a space of its own', async
     { id: 'chromium:x', browser: 'Chrome', name: '', detail: 'Bookmarks and history', ticked: false, source: 'chromium', path: profile, profile: 'Default' }
   ]
   const before = (await state()).spaces.length
-  await app.evaluate((_e, found) => Object.assign((globalThis as any).arcBrowser, { importFound: found, importScan: Promise.resolve() }), found)
+  await app.evaluate((_e, found) => Object.assign((globalThis as any).arcBrowser.imports, { found, scan: Promise.resolve() }), found)
   await dispatch({ type: 'overlay', mode: { kind: 'tour', step: 'import' } })
   const overlay = await pageWithUrl('overlay.html')
   const start = overlay.locator('.import-choices + .intro-buttons .btn')
@@ -699,12 +703,14 @@ test('spaces with their own profile do not share storage', async () => {
   await dispatch({ type: 'open', url: `${base}/storage`, where: 'tab' })
   const a = await pageWithUrl('/storage')
   await a.evaluate(() => localStorage.setItem('who', 'space-a'))
-  const firstSpace = (await state()).activeSpaceId
+  const first = await space()
+  const spaces = (await state()).spaces.length
   await dispatch({ type: 'createSpace', name: 'Work', emoji: '💼', color: '#3fa7d6', profileId: 'new' })
   const s = await state()
-  expect(s.spaces).toHaveLength(2)
-  expect(s.activeSpaceId).not.toBe(firstSpace)
-  expect(s.spaces[0].profileId).not.toBe(s.spaces[1].profileId)
+  expect(s.spaces).toHaveLength(spaces + 1)
+  expect(s.activeSpaceId).not.toBe(first.id)
+  expect((await space()).profileId).not.toBe(first.profileId)
+  const firstSpace = first.id
   await dispatch({ type: 'open', url: `${base}/storage-b`, where: 'tab' })
   const b = await pageWithUrl('/storage-b')
   expect(await b.evaluate(() => localStorage.getItem('who'))).toBeNull()
@@ -798,10 +804,10 @@ test('camera and microphone read as askable until blocked, so sites like Meet re
   await remember(undefined)
 })
 
+const adblockReady = () => app.evaluate(() => !!(globalThis as any).arcBrowser.adblock.engine)
+
 test('built-in ad blocking blocks ad requests and can be turned off per site', async () => {
-  test.setTimeout(90_000)
-  // The filter lists download on first start; wait for the engine.
-  await expect.poll(() => app.evaluate(() => !!(globalThis as any).arcBrowser.adblock.engine), { timeout: 60_000 }).toBe(true)
+  await expect.poll(adblockReady).toBe(true)
   await dispatch({ type: 'open', url: `${base}/ads`, where: 'tab' })
   await expect.poll(async () => (await state()).live[(await space()).activeItemId!]?.loading).toBe(false)
   const id = (await space()).activeItemId!
@@ -832,8 +838,7 @@ wrapToString()
 window.scriptlets = (window.scriptlets ?? 0) + 1`
 
 test('ad block scriptlets run while the page still loads, each in its own scope, and one that throws is caught', async () => {
-  test.setTimeout(90_000)
-  await expect.poll(() => app.evaluate(() => !!(globalThis as any).arcBrowser.adblock.engine), { timeout: 60_000 }).toBe(true)
+  await expect.poll(adblockReady).toBe(true)
   await app.evaluate((_e, scriptlet) => {
     const engine = (globalThis as any).arcBrowser.adblock.engine
     const original = engine.getCosmeticsFilters
@@ -897,9 +902,10 @@ test('links and .html files from other apps open in a Little Window', async () =
 })
 
 test('Traffic Control opens matching links from other apps in their space instead of a Little Window', async () => {
-  const s = await state()
-  const home = s.activeSpaceId
-  const other = s.spaces.find((x) => x.id !== home) ?? s.spaces[0]
+  const home = (await state()).activeSpaceId
+  await dispatch({ type: 'createSpace', name: 'Routed', emoji: '🚦', color: '#3fa7d6' })
+  const other = await space()
+  await dispatch({ type: 'switchSpace', id: home })
   await dispatch({ type: 'settings', patch: { linkRoutes: [{ match: `${base}/routed/`, spaceId: other.id }] } })
   expect((await state()).settings.linkRoutes).toEqual([{ match: `${new URL(base).host}/routed`, spaceId: other.id }])
   launchSecondInstance(`${base}/routed/page`)
@@ -907,6 +913,7 @@ test('Traffic Control opens matching links from other apps in their space instea
   await expect.poll(async () => (await space()).today[0]?.url).toBe(`${base}/routed/page`)
   expect(await app.evaluate(() => (globalThis as any).arcBrowser.openLittles().length)).toBe(0)
   await dispatch({ type: 'settings', patch: { linkRoutes: [] } })
+  await dispatch({ type: 'deleteSpace', id: other.id })
   await dispatch({ type: 'switchSpace', id: home })
 })
 
@@ -952,7 +959,6 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
   const DAY = 24 * 60 * 60_000
   const since = Date.parse('2026-11-02T09:00:00')
   const offer = (iso: string) => app.evaluate((_e, iso) => (globalThis as any).arcBrowser.updater.offerRelaunch(Date.parse(iso)), iso)
-  const kind = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
   await app.evaluate((_e, since) => {
     const b = (globalThis as any).arcBrowser
     // set() also redraws the UI, so the sidebar pill appears.
@@ -963,24 +969,24 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
   await expect.poll(() => app.evaluate(() => (globalThis as any).arcBrowser.window.win.isVisible())).toBe(true)
   // Six days after the download: only the sidebar pill.
   await offer(new Date(since + 6 * DAY).toISOString())
-  expect(await kind()).toBe('none')
+  expect(await overlayKind()).toBe('none')
   const ui = await pageWithUrl('index.html')
   // An earlier test dismissed the pill, which lasts until YARC restarts: reload the UI to start clean.
   await ui.reload()
   await expect(ui.locator('.update-pill')).toContainText('Restart to Update')
   // A week: the card.
   await offer('2026-11-09T09:00:00')
-  expect(await kind()).toBe('update')
+  expect(await overlayKind()).toBe('update')
   const overlay = await pageWithUrl('overlay.html')
   await expect(overlay.locator('.update-ready h1')).toHaveText('2 updates are ready')
   await expect(overlay.locator('.update-ready li')).toHaveText(['Second', 'First'])
   await overlay.locator('.update-ready button', { hasText: 'Later' }).click()
-  expect(await kind()).toBe('none')
+  await expect.poll(overlayKind).toBe('none')
   // "Later" holds for the rest of the day; a day later it asks again.
   await offer('2026-11-09T21:00:00')
-  expect(await kind()).toBe('none')
+  expect(await overlayKind()).toBe('none')
   await offer('2026-11-10T09:00:00')
-  expect(await kind()).toBe('update')
+  expect(await overlayKind()).toBe('update')
   await dispatch({ type: 'overlay', mode: { kind: 'none' } })
   await app.evaluate(() => {
     const b = (globalThis as any).arcBrowser
@@ -1003,7 +1009,6 @@ test('the peeking sidebar stays out while the pointer is near it and slides back
   })
   await dispatch({ type: 'toggleSidebar' })
   await dispatch({ type: 'sidebarReveal', show: true })
-  const kind = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
   const moveIn = (target: 'overlay' | 'page', x: number) =>
     app.evaluate(
       (_e, [t, px]) => {
@@ -1014,12 +1019,21 @@ test('the peeking sidebar stays out while the pointer is near it and slides back
       [target, x] as const
     )
   await moveIn('overlay', 40)
-  // Just past the sidebar's edge, over the page, is still near it.
+  // Just past the sidebar's edge, over the page, is still near it: no timer to hide it.
+  await app.evaluate(() => {
+    const w = (globalThis as any).arcBrowser.window
+    const watch = w.pointerWatch
+    w.pointerWatch = (p: unknown) => {
+      watch(p)
+      ;(globalThis as any).pointerSeen = true
+    }
+  })
   await moveIn('page', 10)
-  await new Promise((r) => setTimeout(r, 700))
-  expect(await kind()).toBe('sidebar')
+  await expect.poll(() => app.evaluate(() => (globalThis as any).pointerSeen)).toBe(true)
+  expect(await app.evaluate(() => (globalThis as any).arcBrowser.cur.sidebarRevealHide)).toBeUndefined()
+  expect(await overlayKind()).toBe('sidebar')
   await moveIn('page', 600)
-  await expect.poll(kind).toBe('none')
+  await expect.poll(overlayKind).toBe('none')
   await dispatch({ type: 'toggleSidebar' })
   await app.evaluate((_e, b) => (globalThis as any).arcBrowser.window.win.setBounds(b), bounds)
 })
@@ -1096,7 +1110,7 @@ test('a tab selected in two windows is live in one and mirrored, greyed, in the 
     const send = ui.send.bind(ui)
     ;(globalThis as any).stills = 0
     ui.send = (channel: string, ...args: unknown[]) => {
-      if (channel === 'arc:snapshot') (globalThis as any).stills++
+      if (channel === 'arc:still') (globalThis as any).stills++
       return send(channel, ...args)
     }
   })
@@ -1135,7 +1149,7 @@ test('menu bar commands reopen the closed main window (macOS)', async () => {
     items(Menu.getApplicationMenu()!).find((i) => i.label === 'New Tab')!.click()
   })
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
-  await expect.poll(() => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)).toBe('command')
+  await expect.poll(overlayKind).toBe('command')
 })
 
 const isPlaying = (id: string) => app.evaluate((_e, tabId) => (globalThis as any).arcBrowser.live.get(tabId).playing as boolean, id)
@@ -1192,8 +1206,18 @@ test('a video paused before you leave its tab gets no player and no card', async
   // Chromium reports the tab audible for a moment after the pause, and an audible tab gets a card.
   await expect.poll(() => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)).toBe(false)
 
+  await app.evaluate((_e, id) => {
+    const b = (globalThis as any).arcBrowser
+    const tabLeft = b.tabLeft
+    b.tabLeft = (left: string) => {
+      const done = tabLeft.call(b, left)
+      if (left === id) (globalThis as any).videoLeft = done
+      return done
+    }
+  }, video)
   await dispatch({ type: 'open', url: `${base}/after-paused-video` })
-  await new Promise((r) => setTimeout(r, 1500))
+  await expect.poll(() => app.evaluate(() => !!(globalThis as any).videoLeft)).toBe(true)
+  await app.evaluate(() => (globalThis as any).videoLeft)
   const tab = await app.evaluate((_e, id) => {
     const t = (globalThis as any).arcBrowser.live.get(id)
     return `video ${id}: playing ${t.playing}, audible ${t.wc.isCurrentlyAudible()}`
@@ -1213,12 +1237,25 @@ test('Little Window can move its page into a closed main window (macOS)', async 
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
 })
 
+function extensionDir(files: Record<string, unknown>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content))
+  return dir
+}
+
+const removeExtension = (id: string) =>
+  app.evaluate((_e, id) => {
+    const b = (globalThis as any).arcBrowser
+    b.profiles.get(b.store.activeSpace.profileId).session.extensions.removeExtension(id)
+  }, id)
+
 // electron-chrome-extensions only fills `chrome`; extensions written against `browser.*` (1Password
 // reads browser.windows when its background starts) need the same APIs there.
 test('extensions get the chrome.* APIs on browser.* too', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 3, name: 'browser namespace', version: '1.0', background: { service_worker: 'bg.js', type: 'module' } }))
-  writeFileSync(join(dir, 'bg.js'), 'console.log(`browser.windows: ${typeof browser.windows}, browser.tabs.query: ${typeof browser.tabs.query}`)')
+  const dir = extensionDir({
+    'manifest.json': { manifest_version: 3, name: 'browser namespace', version: '1.0', background: { service_worker: 'bg.js', type: 'module' } },
+    'bg.js': 'console.log(`browser.windows: ${typeof browser.windows}, browser.tabs.query: ${typeof browser.tabs.query}`)'
+  })
   const logged = await app.evaluate(async (_e, extDir) => {
     const b = (globalThis as any).arcBrowser
     const ses = b.profiles.get(b.store.activeSpace.profileId).session
@@ -1235,13 +1272,11 @@ test('extensions get the chrome.* APIs on browser.* too', async () => {
 
 // Electron has no declarativeNetRequest: YARC's own one makes MV3 blockers (uBlock Origin Lite) block.
 test('an extension’s declarativeNetRequest rules block requests, from its manifest and from its code, and redirect once granted the site', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
   const blockScript = (id: number, urlFilter: string) => ({ id, action: { type: 'block' }, condition: { urlFilter, resourceTypes: ['script'] } })
   // Redirects need the site's permission, which this extension only asks for at runtime.
   const redirectScript = { id: 2, action: { type: 'redirect', redirect: { url: `${base}/dnr-redirected.js` } }, condition: { urlFilter: '/dnr-redirect.js', resourceTypes: ['script'] } }
-  writeFileSync(
-    join(dir, 'manifest.json'),
-    JSON.stringify({
+  const dir = extensionDir({
+    'manifest.json': {
       manifest_version: 3,
       name: 'dnr blocker',
       version: '1.0',
@@ -1249,17 +1284,14 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
       optional_host_permissions: ['<all_urls>'],
       background: { service_worker: 'bg.js' },
       declarative_net_request: { rule_resources: [{ id: 'on', enabled: true, path: 'on.json' }, { id: 'off', enabled: false, path: 'off.json' }] }
-    })
-  )
-  writeFileSync(join(dir, 'on.json'), JSON.stringify([blockScript(1, '/dnr-static.js')]))
-  writeFileSync(join(dir, 'off.json'), JSON.stringify([blockScript(1, '/dnr-kept.js')]))
-  writeFileSync(
-    join(dir, 'bg.js'),
-    `chrome.permissions.request({ origins: ['<all_urls>'] })
+    },
+    'on.json': [blockScript(1, '/dnr-static.js')],
+    'off.json': [blockScript(1, '/dnr-kept.js')],
+    'bg.js': `chrome.permissions.request({ origins: ['<all_urls>'] })
       .then(() => chrome.declarativeNetRequest.updateDynamicRules({ addRules: ${JSON.stringify([blockScript(1, '||127.0.0.1^*/dnr-dynamic.js'), redirectScript])} }))
       .then(() => chrome.declarativeNetRequest.getEnabledRulesets())
       .then((ids) => console.log('dnr ready: ' + ids.join(',')))`
-  )
+  })
   const extId = await app.evaluate(async (_e, extDir) => {
     const b = (globalThis as any).arcBrowser
     const ses = b.profiles.get(b.store.activeSpace.profileId).session
@@ -1279,17 +1311,15 @@ test('an extension’s declarativeNetRequest rules block requests, from its mani
     expect(scripts.filter((s) => hits.includes(s))).toEqual(['/dnr-redirected.js', '/dnr-kept.js'])
   } finally {
     await dispatch({ type: 'close', id: tabId })
-    await app.evaluate((_e, id) => {
-      const b = (globalThis as any).arcBrowser
-      b.profiles.get(b.store.activeSpace.profileId).session.extensions.removeExtension(id)
-    }, extId)
+    await removeExtension(extId)
   }
 })
 
 test('an extension popup opens toward the page, whichever side the sidebar is on', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 3, name: 'popup side', version: '1.0', action: { default_popup: 'popup.html' } }))
-  writeFileSync(join(dir, 'popup.html'), 'popup')
+  const dir = extensionDir({
+    'manifest.json': { manifest_version: 3, name: 'popup side', version: '1.0', action: { default_popup: 'popup.html' } },
+    'popup.html': 'popup'
+  })
   const extId = await app.evaluate(async (_e, extDir) => {
     const b = (globalThis as any).arcBrowser
     return (await b.profiles.get(b.store.activeSpace.profileId).session.extensions.loadExtension(extDir)).id
@@ -1325,10 +1355,7 @@ test('an extension popup opens toward the page, whichever side the sidebar is on
   } finally {
     await dispatch({ type: 'settings', patch: { sidebarRight: false } })
     await dispatch({ type: 'close', id: tabId })
-    await app.evaluate((_e, id) => {
-      const b = (globalThis as any).arcBrowser
-      b.profiles.get(b.store.activeSpace.profileId).session.extensions.removeExtension(id)
-    }, extId)
+    await removeExtension(extId)
   }
 })
 

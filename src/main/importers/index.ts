@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { Browser } from '../browser'
-import { newId, SPACE_COLORS } from '../store'
+import { MAX_ARCHIVE, newId, SPACE_COLORS } from '../store'
 import { FAVICON_MAX } from '../tab'
 import { SIDEBAR_WIDTH, type ArchivedTab, type ImportChoice, type PersistedState, type PinnedNode, type Profile, type Space, type TabItem } from '../../shared/types'
 import { parseArcSidebar, readArcJson } from './arc-sidebar'
@@ -21,12 +22,40 @@ export interface FoundChoice extends ImportChoice {
   profile: string
 }
 
-const MAX_ARCHIVE = 1000
 
 export async function runImport(browser: Browser, source: ImportSource, path?: string): Promise<string | undefined> {
-  if (source === 'arc') return importArc(browser, path)
-  if (source === 'zen') return importZen(browser, path)
-  return importChromium(browser, path)
+  try {
+    if (source === 'arc') return await importArc(browser, path)
+    if (source === 'zen') return await importZen(browser, path)
+    return await importChromium(browser, path)
+  } catch (err) {
+    console.error('[import]', err)
+    return `Import failed: ${(err as Error).message}`
+  }
+}
+
+export class ImportScan {
+  found?: FoundChoice[]
+  private scan?: Promise<void>
+  private readonly onFound: () => void
+
+  constructor(onFound: () => void) {
+    this.onFound = onFound
+  }
+
+  rows(): ImportChoice[] | undefined {
+    this.scan ??= findImportChoices()
+      .catch(() => [])
+      .then((found) => {
+        this.found = found
+        this.onFound()
+      })
+    return this.found?.map(({ id, browser, name, detail, ticked }) => ({ id, browser, name, detail, ticked }))
+  }
+
+  chosen(ids: string[]): FoundChoice[] {
+    return (this.found ?? []).filter((c) => ids.includes(c.id))
+  }
 }
 
 export async function findImportChoices(): Promise<FoundChoice[]> {
@@ -151,7 +180,7 @@ async function readJson(file: string): Promise<unknown> {
     return readArcJson(await readFile(file, 'utf8'))
   } catch {
     // Arc may be rewriting the file right now.
-    await new Promise((r) => setTimeout(r, 250))
+    await sleep(250)
     return readArcJson(await readFile(file, 'utf8'))
   }
 }

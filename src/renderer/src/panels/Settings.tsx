@@ -168,7 +168,7 @@ function General({ state }: { state: AppState }) {
     <>
       <Group title="Browsing">
         <Row title="Search engine" hint="Used for searches typed in the command bar.">
-          <Select label="Search engine" value={s.searchEngine} onChange={(v) => dispatch({ type: 'searchEngine', engine: v as SearchEngine })}>
+          <Select label="Search engine" value={s.searchEngine} onChange={(v) => patch({ searchEngine: v as SearchEngine })}>
             {(Object.keys(SEARCH_ENGINES) as SearchEngine[]).map((k) => (
               <option key={k} value={k}>
                 {SEARCH_ENGINES[k].name}

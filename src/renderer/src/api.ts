@@ -81,11 +81,7 @@ export function faviconFor(favicon?: string): string | undefined {
 }
 
 export function displayHost(url: string): string {
-  try {
-    const u = new URL(url)
-    if (u.protocol === 'about:') return url
-    return u.hostname.replace(/^www\./, '') || url
-  } catch {
-    return url
-  }
+  const u = URL.parse(url)
+  if (!u || u.protocol === 'about:') return url
+  return u.hostname.replace(/^www\./, '') || url
 }

@@ -13,7 +13,7 @@ export const IPC = {
   find: 'arc:find',
   little: 'arc:little-state',
   edit: 'arc:edit',
-  snapshot: 'arc:snapshot',
+  still: 'arc:still',
   action: 'arc:action',
   getState: 'arc:get-state',
   getOverlay: 'arc:get-overlay',
@@ -45,7 +45,7 @@ export interface EditRequest {
   id: string
 }
 
-export interface PageSnapshot {
+export interface PageStill {
   id: string
   /** A data: URL. */
   image: string
@@ -99,7 +99,7 @@ export interface ArcApi {
   onFind(cb: (f: FindEvent) => void): () => void
   onLittle(cb: (s: LittleState) => void): () => void
   onEdit(cb: (e: EditRequest) => void): () => void
-  onSnapshot(cb: (s: PageSnapshot) => void): () => void
+  onStill(cb: (s: PageStill) => void): () => void
   dispatch(action: Action): Promise<void>
   search(query: string): Promise<SearchResult[]>
   suggest(query: string): Promise<string[]>

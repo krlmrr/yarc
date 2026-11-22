@@ -1,23 +1,11 @@
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { FILE_ID, IMAGE_TYPES, type CanvasImage, type CanvasScene, type InboxItem } from '../shared/canvas.ts'
+import { writeFileAtomic } from './atomic-file.ts'
 
 const TRASH_DAYS = 30
 const EXT_TYPES: Record<string, string> = Object.fromEntries(Object.entries(IMAGE_TYPES).map(([type, ext]) => [ext, type]))
-
-/** A crash or power cut leaves the old or the new contents; readable only by this user. */
-export function writeFileAtomic(file: string, data: string | Buffer): void {
-  const tmp = `${file}.tmp`
-  const fd = openSync(tmp, 'w', 0o600)
-  try {
-    writeSync(fd, typeof data === 'string' ? Buffer.from(data) : data)
-    fsyncSync(fd)
-  } finally {
-    closeSync(fd)
-  }
-  renameSync(tmp, file)
-}
 
 export function referencedFiles(scene: CanvasScene): Set<string> {
   const ids = new Set<string>()

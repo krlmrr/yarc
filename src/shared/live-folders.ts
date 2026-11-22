@@ -36,12 +36,8 @@ export function cleanLiveSource(source: LiveSource): LiveSource | undefined {
     return query ? { kind: 'github', query } : undefined
   }
   const raw = String(source.url ?? '').trim()
-  try {
-    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? { kind: 'feed', url: url.href } : undefined
-  } catch {
-    return undefined
-  }
+  const url = URL.parse(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`)
+  return url?.protocol === 'https:' || url?.protocol === 'http:' ? { kind: 'feed', url: url.href } : undefined
 }
 
 export function liveFolderName(source: LiveSource): string {

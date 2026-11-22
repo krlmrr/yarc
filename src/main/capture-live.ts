@@ -1,4 +1,5 @@
 import type { MouseInputEvent, WebContents, WebContentsView } from 'electron'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { Box, LiveCard } from '../shared/canvas'
 import type { ID } from '../shared/types'
 import type { Browser } from './browser'
@@ -148,7 +149,7 @@ export class LiveCapture {
   private async settle(): Promise<void> {
     const to = `scrollTo(${Number(this.card.capture.scroll.x)}, ${Number(this.card.capture.scroll.y)})`
     await this.wc.executeJavaScriptInIsolatedWorld(SCROLL_WORLD, [{ code: `${to}; addEventListener('scroll', () => ${to}, { passive: true })` }]).catch(() => {})
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+    await sleep(SETTLE_MS)
     this.loaded = this.painted = true
     if (!this.wc.isDestroyed()) this.update(this.card)
   }

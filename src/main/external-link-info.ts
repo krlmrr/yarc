@@ -61,14 +61,7 @@ export interface ExternalLinkInfo {
 
 export function externalLinkInfo(url: string, pageUrl: string): ExternalLinkInfo {
   const scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(url)?.[1] ?? '').toLowerCase()
-  let origin = ''
-  let site = ''
-  try {
-    const page = new URL(pageUrl)
-    if (/^https?:$/.test(page.protocol)) {
-      origin = page.origin
-      site = page.host
-    }
-  } catch {}
-  return { scheme, app: APPS[scheme] ?? `the ${scheme}: app`, origin, site, blocked: !scheme || BLOCKED.has(scheme) }
+  const page = URL.parse(pageUrl)
+  const web = page && /^https?:$/.test(page.protocol)
+  return { scheme, app: APPS[scheme] ?? `the ${scheme}: app`, origin: web ? page.origin : '', site: web ? page.host : '', blocked: !scheme || BLOCKED.has(scheme) }
 }

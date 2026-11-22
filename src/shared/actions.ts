@@ -1,5 +1,5 @@
 import type { Side } from './split'
-import type { ID, LiveSource, OverlayMode, Rect, SearchEngine, Settings, SplitAt } from './types'
+import type { ID, LiveSource, OverlayMode, Rect, Settings, SplitAt } from './types'
 
 /** `index` is within the target list. */
 export type DropTarget =
@@ -41,7 +41,6 @@ export type Action =
   | { type: 'refreshLiveFolder'; id: ID }
   | { type: 'switchSpace'; id: ID }
   | { type: 'switchSpaceRelative'; delta: 1 | -1 }
-  | { type: 'switchSpaceIndex'; index: number }
   | { type: 'createSpace'; name: string; emoji?: string; color: string; color2?: string; profileId?: ID | 'new'; profileName?: string }
   /** `color2: ''` goes back to one color. */
   | { type: 'updateSpace'; id: ID; name?: string; emoji?: string; color?: string; color2?: string; profileId?: ID }
@@ -71,7 +70,6 @@ export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   /** While Settings records a shortcut, key presses reach it instead of running commands. */
   | { type: 'recordShortcut'; on: boolean }
-  | { type: 'searchEngine'; engine: SearchEngine }
   | { type: 'littleArc'; url?: string }
   | { type: 'peek'; op: 'close' | 'expand' | 'split' }
   | { type: 'openInChrome'; id?: ID }

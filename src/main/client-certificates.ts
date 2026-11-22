@@ -11,10 +11,7 @@ function label(cert: Certificate): string {
 export function askForClientCertificates(): void {
   app.on('select-client-certificate', (event, wc, url, list, callback) => {
     event.preventDefault()
-    let host = url
-    try {
-      host = new URL(url).host
-    } catch {}
+    const host = URL.parse(url)?.host ?? url
     const shown = list.slice(0, MAX_SHOWN)
     const win = (wc && BrowserWindow.fromWebContents(wc)) || BrowserWindow.getFocusedWindow()
     const options = {

@@ -49,22 +49,16 @@ export const PERMISSION_KEYS = Object.keys(PERMISSIONS)
 
 /** A page's or extension's origin; anything else (file:, data:, sandboxed frames) gets '' and is refused. */
 export function permissionOrigin(url: string): string {
-  try {
-    const u = new URL(url)
-    if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin
-    if (u.protocol === 'chrome-extension:' && u.host) return `chrome-extension://${u.host}`
-  } catch {}
+  const u = URL.parse(url)
+  if (u?.protocol === 'http:' || u?.protocol === 'https:') return u.origin
+  if (u?.protocol === 'chrome-extension:' && u.host) return `chrome-extension://${u.host}`
   return ''
 }
 
 /** The site as people know it: "meet.google.com", "localhost:8765"; other origins as they are. */
 export function siteName(origin: string): string {
-  try {
-    const u = new URL(origin)
-    return /^https?:$/.test(u.protocol) && u.host ? u.host : origin
-  } catch {
-    return origin
-  }
+  const u = URL.parse(origin)
+  return u && /^https?:$/.test(u.protocol) && u.host ? u.host : origin
 }
 
 export function permissionLabel(key: string): string {

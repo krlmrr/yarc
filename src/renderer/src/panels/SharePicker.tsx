@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import type { OverlayMode } from '../../../shared/types'
 import { cx, dispatch } from '../api'
+import './share.css'
 
 type Mode = Extract<OverlayMode, { kind: 'share-picker' }>
 

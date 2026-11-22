@@ -17,11 +17,7 @@ const LOCAL = /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?(\/.*)?$/
 const DOMAIN = /^([a-z0-9-]+\.)+[a-z][a-z0-9-]{1,62}(:\d+)?([/?#].*)?$/i
 
 export function originOf(url: string): string {
-  try {
-    return new URL(url).origin
-  } catch {
-    return ''
-  }
+  return URL.parse(url)?.origin ?? ''
 }
 
 export function toUrl(input: string): string | undefined {
@@ -45,12 +41,8 @@ const TRACKING_ON: [host: RegExp, key: RegExp][] = [
 
 /** Filters the raw query so the parameters that stay keep their exact encoding. */
 export function withoutTracking(url: string): string {
-  let u: URL
-  try {
-    u = new URL(url)
-  } catch {
-    return url
-  }
+  const u = URL.parse(url)
+  if (!u) return url
   const onHost = TRACKING_ON.find(([host]) => host.test(u.hostname))?.[1]
   const params = u.search.slice(1).split('&')
   const kept = params.filter((p) => {
@@ -62,12 +54,6 @@ export function withoutTracking(url: string): string {
   return u.href
 }
 
-export function queryFromSearchUrl(url: string): string | undefined {
-  try {
-    const u = new URL(url)
-    if (/(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|kagi\.com|search\.brave\.com)$/.test(u.hostname)) {
-      return u.searchParams.get('q') ?? undefined
-    }
-  } catch {}
-  return undefined
+export function hostOf(url: string): string {
+  return URL.parse(url)?.hostname.replace(/^www\./, '') ?? ''
 }

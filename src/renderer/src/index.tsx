@@ -68,7 +68,7 @@ function useToast(): string | undefined {
 
 function useStills(): Record<string, string> {
   const [stills, setStills] = useState<Record<string, string>>({})
-  useEffect(() => arc.onSnapshot(({ id, image }) => setStills((s) => ({ ...s, [id]: image }))), [])
+  useEffect(() => arc.onStill(({ id, image }) => setStills((s) => ({ ...s, [id]: image }))), [])
   return stills
 }
 

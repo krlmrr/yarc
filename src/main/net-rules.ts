@@ -282,12 +282,8 @@ function targetOf(rule: Rule, url: string, extensionId: string): string | undefi
 }
 
 function transformUrl(url: string, t: UrlTransform): string | undefined {
-  let u: URL
-  try {
-    u = new URL(url)
-  } catch {
-    return undefined
-  }
+  const u = URL.parse(url)
+  if (!u) return undefined
   if (t.scheme !== undefined) u.protocol = `${t.scheme}:`
   if (t.host !== undefined) u.hostname = t.host
   if (t.port !== undefined) u.port = t.port
@@ -464,11 +460,7 @@ export function bestToken(filter: string): string | undefined {
 }
 
 function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/\.$/, '')
-  } catch {
-    return ''
-  }
+  return URL.parse(url)?.hostname.toLowerCase().replace(/\.$/, '') ?? ''
 }
 
 function suffixes(host: string): string[] {

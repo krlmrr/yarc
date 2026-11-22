@@ -45,12 +45,8 @@ export function matchText(text: string, query: string): Match {
 export const bareUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/i, '')
 
 export function searchedFor(url: string): string | undefined {
-  let u: URL
-  try {
-    u = new URL(url)
-  } catch {
-    return undefined
-  }
+  const u = URL.parse(url)
+  if (!u) return undefined
   const host = u.hostname.replace(/^www\./, '')
   const path = u.pathname
   const isResultsPage =
@@ -175,10 +171,6 @@ export function arrange(query: string, typed: SearchResult, candidates: Candidat
 
 function isRootOf(url: string | undefined, page: string | undefined): boolean {
   if (!url || !page) return false
-  try {
-    const root = new URL(url)
-    return root.pathname === '/' && !root.search && !root.hash && root.origin === new URL(page).origin
-  } catch {
-    return false
-  }
+  const root = URL.parse(url)
+  return !!root && root.pathname === '/' && !root.search && !root.hash && root.origin === URL.parse(page)?.origin
 }

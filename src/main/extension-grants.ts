@@ -1,5 +1,6 @@
 import type { Extension } from 'electron'
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { writeFileAtomic } from './atomic-file'
+import { readFileSync } from 'node:fs'
 
 export interface Grant {
   origins: string[]
@@ -31,8 +32,7 @@ export class ExtensionGrants {
       permissions: [...new Set([...had.permissions, ...(request.permissions ?? [])])]
     }
     try {
-      writeFileSync(`${this.file}.tmp`, JSON.stringify(this.all))
-      renameSync(`${this.file}.tmp`, this.file)
+      writeFileAtomic(this.file, JSON.stringify(this.all))
     } catch (err) {
       console.warn('[extensions] could not save granted permissions', err)
     }

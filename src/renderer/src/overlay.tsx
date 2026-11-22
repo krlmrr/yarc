@@ -5,7 +5,7 @@ import type { CommandId } from '../../shared/keymap'
 import { matchSiteSearch, siteSearchUrl, type SiteSearch } from '../../shared/site-search'
 import { MAX_PANES, paneIds, placePane, previewRect, sideAt, type Side } from '../../shared/split'
 import { isFloating } from '../../shared/tour'
-import { findItem, spaceCanvases } from '../../shared/tree'
+import { findItem, spaceCanvases, tabTitle } from '../../shared/tree'
 import type { AppState, ID, OverlayMode, Rect, SearchResult } from '../../shared/types'
 import { activeSpace, arc, cx, dispatch, displayHost, isMac, shortcutLabel, useAppState, useOverlayMode, useSpaceTheme } from './api'
 import { Favicon, Icon, type IconName } from './icons'
@@ -16,6 +16,8 @@ import { Settings } from './panels/Settings'
 import { SharePicker } from './panels/SharePicker'
 import { SpaceEditor } from './panels/SpaceEditor'
 import { Sidebar } from './Sidebar'
+import './capture.css'
+import './command-bar.css'
 import './styles.css'
 
 const close = () => dispatch({ type: 'overlay', mode: { kind: 'none' } })
@@ -663,7 +665,7 @@ function Switcher({ state, order, index }: { state: AppState; order: string[]; i
           return (
             <div key={id} className={cx('switch-card', i === index % visible.length && 'sel')}>
               <Favicon url={item.url} favicon={live?.favicon ?? item.favicon} />
-              <span className="t">{item.savedTitle || live?.title || item.title}</span>
+              <span className="t">{tabTitle(item, live?.title)}</span>
             </div>
           )
         })}

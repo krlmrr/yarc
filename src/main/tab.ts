@@ -252,11 +252,9 @@ function popupOptions(session: Session): BrowserWindowConstructorOptions {
 
 /** Never the page's own title: a popup has no address bar to check. */
 export function popupTitle(url: string): string {
-  try {
-    const u = new URL(url)
-    if (u.protocol === 'https:') return u.host
-    if (u.protocol === 'http:') return `Not Secure – ${u.host}`
-  } catch {}
+  const u = URL.parse(url)
+  if (u?.protocol === 'https:') return u.host
+  if (u?.protocol === 'http:') return `Not Secure – ${u.host}`
   return url.length > 80 ? `${url.slice(0, 80)}…` : url
 }
 
