@@ -107,3 +107,7 @@ export function stripKind(item: TabItem): TabItem {
   const { kind: _kind, ...rest } = item as TabItem & { kind?: string }
   return rest
 }
+
+export function tabTitle(item: TabItem, pageTitle?: string): string {
+  return item.savedTitle || pageTitle || item.title
+}

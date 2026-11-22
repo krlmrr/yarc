@@ -1,5 +1,5 @@
 import type { Side } from './split'
-import type { ID, LiveSource, OverlayMode, Rect, SearchEngine, Settings, SplitAt } from './types'
+import type { ID, LiveSource, OverlayMode, Rect, Settings, SplitAt } from './types'
 
 /** `index` is within the target list. */
 export type DropTarget =
@@ -70,7 +70,6 @@ export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   /** While Settings records a shortcut, key presses reach it instead of running commands. */
   | { type: 'recordShortcut'; on: boolean }
-  | { type: 'searchEngine'; engine: SearchEngine }
   | { type: 'littleArc'; url?: string }
   | { type: 'peek'; op: 'close' | 'expand' | 'split' }
   | { type: 'openInChrome'; id?: ID }

@@ -4,6 +4,7 @@ import type { LittleOp, LittleState } from '../../shared/ipc'
 import { arc, displayHost, isMac } from './api'
 import { Icon } from './icons'
 import './styles.css'
+import './little.css'
 
 function menuBelow(op: LittleOp) {
   return (e: MouseEvent<HTMLButtonElement>) => {

@@ -15,6 +15,7 @@ import {
   removePane,
   sideAt,
   splitMenuModel,
+  splitRows,
   upgradeSplit
 } from '../../src/shared/split.ts'
 import type { SplitGroup, SplitNode } from '../../src/shared/types.ts'
@@ -287,4 +288,20 @@ test("a split's tabs are brought together where the first of them is", () => {
 test('a list with fewer than two of the split\'s tabs stays as it is', () => {
   const list = tabs('A', 'X', 'Y')
   assert.equal(gather(list, ['A', 'B']), list)
+})
+
+// --------------------------------------------------------------- the sidebar's split rows
+
+test("a split's tabs share one sidebar row, at the first of them in the list", () => {
+  const splits = [{ id: 's', root: placePane(undefined, 'B', 'D', 'right')! }]
+  const { rows, hidden } = splitRows(splits, [{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'D' }])
+  assert.deepEqual([...rows], [['B', ['B', 'D']]])
+  assert.deepEqual([...hidden], ['D'])
+})
+
+test('a split with only one of its tabs in the list gets no row there', () => {
+  const splits = [{ id: 's', root: placePane(undefined, 'B', 'D', 'right')! }]
+  const { rows, hidden } = splitRows(splits, [{ id: 'A' }, { id: 'B' }])
+  assert.equal(rows.size, 0)
+  assert.equal(hidden.size, 0)
 })

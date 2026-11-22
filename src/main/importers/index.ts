@@ -24,9 +24,38 @@ export interface FoundChoice extends ImportChoice {
 
 
 export async function runImport(browser: Browser, source: ImportSource, path?: string): Promise<string | undefined> {
-  if (source === 'arc') return importArc(browser, path)
-  if (source === 'zen') return importZen(browser, path)
-  return importChromium(browser, path)
+  try {
+    if (source === 'arc') return await importArc(browser, path)
+    if (source === 'zen') return await importZen(browser, path)
+    return await importChromium(browser, path)
+  } catch (err) {
+    console.error('[import]', err)
+    return `Import failed: ${(err as Error).message}`
+  }
+}
+
+export class ImportScan {
+  found?: FoundChoice[]
+  private scan?: Promise<void>
+  private readonly onFound: () => void
+
+  constructor(onFound: () => void) {
+    this.onFound = onFound
+  }
+
+  rows(): ImportChoice[] | undefined {
+    this.scan ??= findImportChoices()
+      .catch(() => [])
+      .then((found) => {
+        this.found = found
+        this.onFound()
+      })
+    return this.found?.map(({ id, browser, name, detail, ticked }) => ({ id, browser, name, detail, ticked }))
+  }
+
+  chosen(ids: string[]): FoundChoice[] {
+    return (this.found ?? []).filter((c) => ids.includes(c.id))
+  }
 }
 
 export async function findImportChoices(): Promise<FoundChoice[]> {

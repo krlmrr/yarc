@@ -339,3 +339,18 @@ export function upgradeSplit(raw: { id: ID; root?: SplitGroup; itemIds?: ID[]; s
   const sizes = raw.sizes?.length === ids.length ? normalizeSizes(raw.sizes) : ids.map(() => 1 / ids.length)
   return { id: raw.id, root: { dir: 'row', children: ids.map((itemId) => ({ itemId })), sizes } }
 }
+
+/** `rows`: each split's first tab in `list` → its tabs there; `hidden`: the others, drawn in that row. */
+export function splitRows(splits: Split[], list: { id: ID }[]): { rows: Map<ID, ID[]>; hidden: Set<ID> } {
+  const rows = new Map<ID, ID[]>()
+  const hidden = new Set<ID>()
+  const inList = new Set(list.map((x) => x.id))
+  for (const sp of splits) {
+    const ids = paneIds(sp.root).filter((id) => inList.has(id))
+    if (ids.length < 2) continue
+    const first = list.find((x) => ids.includes(x.id))!.id
+    rows.set(first, ids)
+    for (const id of ids) if (id !== first) hidden.add(id)
+  }
+  return { rows, hidden }
+}

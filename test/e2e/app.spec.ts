@@ -676,7 +676,7 @@ test('the tour imports the ticked browsers, each into a space of its own', async
     { id: 'chromium:x', browser: 'Chrome', name: '', detail: 'Bookmarks and history', ticked: false, source: 'chromium', path: profile, profile: 'Default' }
   ]
   const before = (await state()).spaces.length
-  await app.evaluate((_e, found) => Object.assign((globalThis as any).arcBrowser, { importFound: found, importScan: Promise.resolve() }), found)
+  await app.evaluate((_e, found) => Object.assign((globalThis as any).arcBrowser.imports, { found, scan: Promise.resolve() }), found)
   await dispatch({ type: 'overlay', mode: { kind: 'tour', step: 'import' } })
   const overlay = await pageWithUrl('overlay.html')
   const start = overlay.locator('.import-choices + .intro-buttons .btn')
@@ -1096,7 +1096,7 @@ test('a tab selected in two windows is live in one and mirrored, greyed, in the 
     const send = ui.send.bind(ui)
     ;(globalThis as any).stills = 0
     ui.send = (channel: string, ...args: unknown[]) => {
-      if (channel === 'arc:snapshot') (globalThis as any).stills++
+      if (channel === 'arc:still') (globalThis as any).stills++
       return send(channel, ...args)
     }
   })

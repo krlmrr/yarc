@@ -2,12 +2,18 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createRoot } from 'react-dom/client'
 import {
   arrangeInGrid,
+  arrowEnds,
+  arrowHead,
   boundsOf,
   COLORS,
   IMAGE_TYPES,
+  intersects,
   placedSize,
   placeNext,
+  resized,
+  smoothPath,
   snapMove,
+  withBox,
   type BoardItem,
   type Box,
   type CanvasImage,
@@ -17,6 +23,7 @@ import {
   type Color,
   type DrawItem,
   type Guide,
+  type Handle,
   type ImageItem,
   type InboxItem,
   type LiveCard,
@@ -58,7 +65,6 @@ const CLIP_TYPE = 'application/x-yarc-canvas'
 type Tool = 'select' | 'hand' | 'text' | 'rect' | 'ellipse' | 'arrow' | 'draw'
 type View = { x: number; y: number; zoom: number }
 type Point = { x: number; y: number }
-type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 type Style = { color: Color; fill: boolean; textSize: TextSize }
 type Gesture =
   | { kind: 'pan'; start: Point; view: View }
@@ -83,7 +89,7 @@ const titleOf = (items: BoardItem[]) => items.find((i): i is TextItem => i.kind 
 const paint = (color: Color, dark: boolean) => PALETTE[color][dark ? 'dark' : 'light']
 const toWorld = (p: Point, v: View): Point => ({ x: (p.x - v.x) / v.zoom, y: (p.y - v.y) / v.zoom })
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
-const intersects = (a: Box, b: Box) => a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height
+
 const hasColor = (i: BoardItem): i is Extract<BoardItem, { color: Color }> => 'color' in i
 const keepsShape = (i: BoardItem) => i.kind === 'capture' || i.kind === 'image'
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
@@ -99,65 +105,6 @@ function useDarkAppearance(): boolean {
     return () => watch.disconnect()
   }, [])
   return dark
-}
-
-function smoothPath(points: number[]): string {
-  if (points.length < 4) return `M ${points[0] ?? 0} ${points[1] ?? 0} l 0.01 0`
-  let d = `M ${points[0]} ${points[1]}`
-  for (let i = 2; i < points.length - 2; i += 2) {
-    const mx = (points[i] + points[i + 2]) / 2
-    const my = (points[i + 1] + points[i + 3]) / 2
-    d += ` Q ${points[i]} ${points[i + 1]} ${mx} ${my}`
-  }
-  return `${d} L ${points[points.length - 2]} ${points[points.length - 1]}`
-}
-
-function arrowEnds(a: { width: number; height: number; flipX: boolean; flipY: boolean }) {
-  return { x1: a.flipX ? a.width : 0, y1: a.flipY ? a.height : 0, x2: a.flipX ? 0 : a.width, y2: a.flipY ? 0 : a.height }
-}
-
-function arrowHead(x1: number, y1: number, x2: number, y2: number, size = 14): string {
-  const angle = Math.atan2(y2 - y1, x2 - x1)
-  const side = (turn: number) => `${x2 + size * Math.cos(angle + turn)} ${y2 + size * Math.sin(angle + turn)}`
-  return `M ${side(Math.PI * 0.82)} L ${x2} ${y2} L ${side(-Math.PI * 0.82)}`
-}
-
-function resized(box: Box, handle: Handle, dx: number, dy: number, keepShape: boolean) {
-  let left = box.x
-  let top = box.y
-  let right = box.x + box.width
-  let bottom = box.y + box.height
-  if (handle.includes('w')) left += dx
-  if (handle.includes('e')) right += dx
-  if (handle.includes('n')) top += dy
-  if (handle.includes('s')) bottom += dy
-  if (keepShape && handle.length === 2 && box.width > 0 && box.height > 0) {
-    const ratio = box.width / box.height
-    let w = right - left
-    let h = bottom - top
-    if (Math.abs(w) / ratio > Math.abs(h)) h = (Math.sign(h) || 1) * (Math.abs(w) / ratio)
-    else w = (Math.sign(w) || 1) * Math.abs(h) * ratio
-    if (handle.includes('w')) left = right - w
-    else right = left + w
-    if (handle.includes('n')) top = bottom - h
-    else bottom = top + h
-  }
-  return {
-    box: { x: Math.min(left, right), y: Math.min(top, bottom), width: Math.abs(right - left), height: Math.abs(bottom - top) },
-    flipX: right < left,
-    flipY: bottom < top
-  }
-}
-
-function withBox(item: BoardItem, r: ReturnType<typeof resized>): BoardItem {
-  const min = item.kind === 'arrow' || item.kind === 'draw' ? 0 : 8
-  const box = { ...r.box, width: Math.max(min, r.box.width), height: Math.max(min, r.box.height) }
-  if (item.kind === 'arrow') return { ...item, ...box, flipX: item.flipX !== r.flipX, flipY: item.flipY !== r.flipY }
-  if (item.kind === 'draw' && (r.flipX || r.flipY)) {
-    const points = item.points.map((v, i) => (i % 2 === 0 ? (r.flipX ? item.drawnWidth - v : v) : r.flipY ? item.drawnHeight - v : v))
-    return { ...item, ...box, points }
-  }
-  return { ...item, ...box }
 }
 
 function readDataURL(file: Blob): Promise<string> {

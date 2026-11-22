@@ -1,6 +1,7 @@
 // Draw with the panel's colors (--space, --panel, --text, --accent, --line) so pictures suit light and dark spaces.
 import type { ReactNode } from 'react'
 import logo from '../../../../build/icon.svg'
+import './spotlights.css'
 
 export function MiniWindow({ tabs = 4, active = 0, children }: { tabs?: number; active?: number; children?: ReactNode }) {
   return (

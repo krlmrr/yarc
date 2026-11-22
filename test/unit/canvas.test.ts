@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, test } from 'node:test'
-import { arrangeInGrid, MAX_PLACED, placedSize, placeNext, snapMove } from '../../src/shared/canvas.ts'
+import { arrangeInGrid, MAX_PLACED, placedSize, placeNext, resized, snapMove, withBox, type BoardItem } from '../../src/shared/canvas.ts'
 import { CanvasFiles, emptyOldTrash } from '../../src/main/canvas-store.ts'
 
 const GAP = 24
@@ -196,5 +196,32 @@ describe('deleting a canvas', () => {
     utimesSync(join(profileCanvases, '.trash', 'deleted-long-ago'), longAgo, longAgo)
     emptyOldTrash(profileCanvases)
     assert.deepEqual(readdirSync(join(profileCanvases, '.trash')), ['deleted-today'])
+  })
+})
+
+describe('resizing an item by a handle', () => {
+  const box = { x: 0, y: 0, width: 200, height: 100 }
+
+  test('a side handle moves only its own edge', () => {
+    assert.deepEqual(resized(box, 'e', 50, 30, false).box, { x: 0, y: 0, width: 250, height: 100 })
+    assert.deepEqual(resized(box, 'n', 50, 30, false).box, { x: 0, y: 30, width: 200, height: 70 })
+  })
+
+  test('a corner keeps the shape of a capture or picture', () => {
+    assert.deepEqual(resized(box, 'se', 100, 0, true).box, { x: 0, y: 0, width: 300, height: 150 })
+  })
+
+  test('dragging past the opposite edge flips the item', () => {
+    const r = resized(box, 'w', 300, 0, false)
+    assert.deepEqual(r.box, { x: 200, y: 0, width: 100, height: 100 })
+    assert.equal(r.flipX, true)
+  })
+
+  test('a flipped drawing mirrors its points; a shape stays at least 8 px', () => {
+    const drawing: BoardItem = { id: 'd', kind: 'draw', x: 0, y: 0, width: 10, height: 10, drawnWidth: 10, drawnHeight: 10, points: [0, 0, 10, 4], color: 'ink' }
+    const flipped = withBox(drawing, { box: { x: 0, y: 0, width: 10, height: 10 }, flipX: true, flipY: false })
+    assert.deepEqual((flipped as { points: number[] }).points, [10, 0, 0, 4])
+    const shape: BoardItem = { id: 's', kind: 'rect', x: 0, y: 0, width: 50, height: 50, color: 'ink', fill: false }
+    assert.deepEqual(withBox(shape, { box: { x: 0, y: 0, width: 2, height: 2 }, flipX: false, flipY: false }), { ...shape, width: 8, height: 8 })
   })
 })

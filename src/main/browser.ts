@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  clipboard,
   dialog,
   nativeTheme,
   screen,
@@ -24,7 +23,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Action, DropTarget } from '../shared/actions'
 import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
-import { commandForInput, validShortcuts, type CommandId } from '../shared/keymap'
+import { commandForInput, type CommandId } from '../shared/keymap'
 import { cleanLiveSource, liveFolderName } from '../shared/live-folders'
 import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems, stripKind, walkPinned } from '../shared/tree'
 import type {
@@ -36,7 +35,6 @@ import type {
   PinnedNode,
   PinnedTab,
   Rect,
-  Settings,
   Space,
   Split,
   SplitAt,
@@ -45,8 +43,9 @@ import type {
 } from '../shared/types'
 import { appendPaneIn, flipSplit, gatherSplit, layoutPanes, movePane, PANE_BAR, paneIds, placePaneIn, removeFromSplits, resizeGroup, splitOf, type Side } from '../shared/split'
 import { isFloating, nextStep, stepAfter, type TourEvent, type TourStep } from '../shared/tour'
-import { routeFor, validRoutes } from '../shared/link-routes'
-import { hostOf, resolveInput, SEARCH_ENGINES, withoutTracking } from '../shared/url'
+import { routeFor } from '../shared/link-routes'
+import { validSettingsPatch } from '../shared/settings'
+import { hostOf, resolveInput } from '../shared/url'
 import { AdBlock } from './adblock'
 import { bookmarksHtml } from './bookmarks-export'
 import { Canvases } from './canvas'
@@ -55,15 +54,17 @@ import { recentChanges, startupScreen, type Changelog } from './changelog'
 import { openInChrome } from './chrome'
 import { DownloadList } from './download-list'
 import { Extensions } from './extensions'
-import { findImportChoices, importChoices, runImport, type FoundChoice } from './importers'
+import { importChoices, ImportScan, runImport } from './importers'
 import { FLOATING_DEMO_URL } from './floating-demo'
 import { FloatingPlayer, type FloatAnchor, type FloatingHost } from './floating-player'
 import { LittleWindow } from './little'
 import { LiveFolders } from './live-folders'
 import { logInfo, logProblem, setLogContext } from './log'
 import { pauseMedia, probeMedia, toggleMedia } from './media-page'
-import { closeFloating, closed, dismiss, emptyMedia, float, left, minimize, shown, type LeftWith, type MediaState } from './media-state'
+import * as mediaState from './media-state'
+import type { LeftWith, MediaState } from './media-state'
 import { Mirror, stillOf } from './mirror'
+import { runPageAction } from './page-actions'
 import { Peek, sameSite } from './peek'
 import { buildAppMenu, buildCanvasMenu, buildContextMenu, buildFolderMenu, buildItemMenu, buildSpaceMenu, buildSplitMenu } from './menus'
 import { Profiles, type ProfileRuntime } from './profiles'
@@ -174,7 +175,7 @@ export class Browser implements TabHost, FloatingHost {
   readonly live = new Map<ID, LiveTab>()
   readonly canvases = new Canvases(this)
   private readonly liveFolders = new LiveFolders(this)
-  private media: MediaState = emptyMedia()
+  private media: MediaState = mediaState.emptyMedia()
   /** The space editor's unsaved colors; no `spaceId` is a new space, shown on its window's current one. */
   private colorPreview: { w: WindowSession; spaceId?: ID; color: string; color2?: string } | undefined
   private readonly floating = new FloatingPlayer(this)
@@ -184,7 +185,7 @@ export class Browser implements TabHost, FloatingHost {
   private mirror = new Mirror((wc, still) => this.sendStill(wc, still))
   private mru: ID[] = []
   private recordingShortcut = false
-  private closed: ClosedTab[] = []
+  private closedTabs: ClosedTab[] = []
   readonly downloads = new DownloadList({
     toast: (text) => this.toast(text),
     startedByPage: (page) => [...this.live.values()].some((t) => t.wc === page && !t.userActivated),
@@ -201,8 +202,7 @@ export class Browser implements TabHost, FloatingHost {
     return [...this.littles].filter((l) => !l.win.isDestroyed())
   }
   private tour: TourStep | undefined
-  private importScan?: Promise<void>
-  private importFound?: FoundChoice[]
+  private readonly imports = new ImportScan(() => this.emitSoon())
   private legacyWindowFile: string | undefined
   private static readonly all = new Set<Browser>()
 
@@ -425,7 +425,7 @@ export class Browser implements TabHost, FloatingHost {
       return this.emitSoon()
     }
     this.floating.release()
-    this.media = emptyMedia()
+    this.media = mediaState.emptyMedia()
     this.onScreen.clear()
     for (const t of this.live.values()) t.destroy()
     this.live.clear()
@@ -534,18 +534,8 @@ export class Browser implements TabHost, FloatingHost {
   private withPanelData(snap: AppState, mode: OverlayMode): AppState {
     if (mode.kind === 'library') return { ...snap, archive: this.state.archive }
     if (mode.kind === 'settings') return { ...snap, sitePermissions: Object.fromEntries(this.state.profiles.map((p) => [p.id, this.profiles.decisions(p.id).list()])) }
-    if (mode.kind === 'tour' && mode.step === 'import') return { ...snap, importChoices: this.importChoiceRows() }
+    if (mode.kind === 'tour' && mode.step === 'import') return { ...snap, importChoices: this.imports.rows() }
     return snap
-  }
-
-  private importChoiceRows(): AppState['importChoices'] {
-    this.importScan ??= findImportChoices()
-      .catch(() => [])
-      .then((found) => {
-        this.importFound = found
-        this.emitSoon()
-      })
-    return this.importFound?.map(({ id, browser, name, detail, ticked }) => ({ id, browser, name, detail, ticked }))
   }
 
   private liveInfo(): AppState['live'] {
@@ -784,7 +774,7 @@ export class Browser implements TabHost, FloatingHost {
   private show(slots: ViewSlot[]): void {
     // A view has one parent: the floating video goes back into its page first.
     const floatingId = this.floating.tabId
-    if (floatingId && slots.some((s) => s.view === this.floating.view)) this.setMedia(shown(this.media, floatingId))
+    if (floatingId && slots.some((s) => s.view === this.floating.view)) this.setMedia(mediaState.shown(this.media, floatingId))
     for (const other of this.wins) {
       if (other === this.cur || !other.open) continue
       for (const { view } of slots) if (other.main.isShown(view)) this.lend(other, view)
@@ -803,7 +793,7 @@ export class Browser implements TabHost, FloatingHost {
     void tab.wc
       .capturePage()
       .then((image) => {
-        if (w.open && !image.isEmpty()) w.main.ui.send(IPC.snapshot, { id: pane.id, image: stillOf(image) })
+        if (w.open && !image.isEmpty()) w.main.ui.send(IPC.still, { id: pane.id, image: stillOf(image) })
       })
       .catch(() => {})
     this.emitSoon()
@@ -826,7 +816,7 @@ export class Browser implements TabHost, FloatingHost {
     for (const w of this.wins) if (w.open) for (const v of w.layout.views) if (!v.elsewhere) now.add(v.id)
     const before = this.onScreen
     this.onScreen = now
-    for (const id of now) if (!before.has(id)) this.setMedia(shown(this.media, id))
+    for (const id of now) if (!before.has(id)) this.setMedia(mediaState.shown(this.media, id))
     for (const id of before) if (!now.has(id)) void this.tabLeft(id)
   }
 
@@ -840,7 +830,7 @@ export class Browser implements TabHost, FloatingHost {
     const playing: LeftWith = found === null ? (tab.wc.isCurrentlyAudible() ? 'audio' : 'nothing') : found === 'audio' ? 'audio' : 'video'
     if (playing === 'video') this.videoTabs.add(id)
     else this.videoTabs.delete(id)
-    const next = left(this.media, id, playing, this.state.settings.floatVideos)
+    const next = mediaState.left(this.media, id, playing, this.state.settings.floatVideos)
     if (next.floating !== id) return this.setMedia(next)
     await this.floatTab(tab, still)
   }
@@ -853,7 +843,7 @@ export class Browser implements TabHost, FloatingHost {
     const id = tab.itemId
     const ok = await this.floating.open(tab, this.floatAnchor(), wanted)
     if (!wanted()) return
-    this.setMedia(ok ? float(this.media, id) : left(this.media, id, 'audio', false))
+    this.setMedia(ok ? mediaState.float(this.media, id) : mediaState.left(this.media, id, 'audio', false))
   }
 
   private floatAnchor(): FloatAnchor {
@@ -872,7 +862,7 @@ export class Browser implements TabHost, FloatingHost {
   private mediaGone(id: ID): void {
     this.onScreen.delete(id)
     this.videoTabs.delete(id)
-    this.setMedia(closed(this.media, id))
+    this.setMedia(mediaState.closed(this.media, id))
   }
 
   private async exportBookmarks(): Promise<void> {
@@ -909,13 +899,13 @@ export class Browser implements TabHost, FloatingHost {
   }
 
   minimizeFloating(): void {
-    this.setMedia(minimize(this.media))
+    this.setMedia(mediaState.minimize(this.media))
   }
 
   closeFloating(): void {
     const tab = this.media.floating ? this.live.get(this.media.floating) : undefined
     if (tab) void pauseMedia(tab.wc)
-    this.setMedia(closeFloating(this.media))
+    this.setMedia(mediaState.closeFloating(this.media))
   }
 
   private async mediaCard(id: ID, op: 'back' | 'toggle' | 'float' | 'dismiss'): Promise<void> {
@@ -923,9 +913,9 @@ export class Browser implements TabHost, FloatingHost {
     if (op === 'back') return this.backToTab(id)
     if (op === 'dismiss') {
       if (tab) void pauseMedia(tab.wc)
-      return this.setMedia(dismiss(this.media, id))
+      return this.setMedia(mediaState.dismiss(this.media, id))
     }
-    if (!tab || tab.destroyed) return this.setMedia(closed(this.media, id))
+    if (!tab || tab.destroyed) return this.setMedia(mediaState.closed(this.media, id))
     if (op === 'toggle') return void (await toggleMedia(tab.wc))
     if (!this.onScreen.has(id)) await this.floatTab(tab, () => this.outOfSight(id, tab))
   }
@@ -934,7 +924,7 @@ export class Browser implements TabHost, FloatingHost {
     const id = this.itemIdFor(wc)
     if (!id) return
     for (const w of this.wins) {
-      if (w.open && w.layout.views.some((v) => v.id === id && v.elsewhere)) w.main.ui.send(IPC.snapshot, { id, image })
+      if (w.open && w.layout.views.some((v) => v.id === id && v.elsewhere)) w.main.ui.send(IPC.still, { id, image })
     }
   }
 
@@ -1226,7 +1216,7 @@ export class Browser implements TabHost, FloatingHost {
 
   private archiveClosed(item: Pick<TabItem, 'url' | 'title' | 'favicon'>, spaceId: ID): void {
     this.archive(item, spaceId)
-    this.closed.push({ url: item.url, title: item.title, spaceId })
+    this.closedTabs.push({ url: item.url, title: item.title, spaceId })
   }
 
   private shownOrPlaying(id: ID): boolean {
@@ -1282,7 +1272,7 @@ export class Browser implements TabHost, FloatingHost {
   }
 
   reopenClosed(): void {
-    const last = this.closed.pop()
+    const last = this.closedTabs.pop()
     if (!last) return
     if (this.store.space(last.spaceId)) this.state.activeSpaceId = last.spaceId
     this.newTab(last.url)
@@ -1680,14 +1670,8 @@ export class Browser implements TabHost, FloatingHost {
         return this.togglePin(a.id)
       case 'addFavorite':
         return this.addFavorite(a.id)
-      case 'resetToSaved': {
-        const item = findItem(this.state, a.id)?.item
-        if (!item?.savedUrl) return
-        item.url = item.savedUrl
-        const live = this.live.get(a.id)
-        if (live) void live.load(item.savedUrl)
-        return this.activate(a.id)
-      }
+      case 'resetToSaved':
+        return this.resetToSaved(a.id)
       case 'duplicate': {
         const item = findItem(this.state, a.id)?.item
         if (item) this.newTab(this.live.get(a.id)?.wc.getURL() || item.url)
@@ -1705,13 +1689,8 @@ export class Browser implements TabHost, FloatingHost {
         return this.moveToSpace(a.id, a.spaceId)
       case 'clearToday':
         return this.clearToday()
-      case 'unload': {
-        const item = findItem(this.state, a.id)?.item
-        this.dropLive(a.id)
-        if (item?.savedUrl) item.url = item.savedUrl
-        if (space.activeItemId === a.id) space.activeItemId = this.nextActiveAfter(space, a.id)
-        return this.relayout()
-      }
+      case 'unload':
+        return this.unload(a.id)
       case 'mute': {
         const t = this.live.get(a.id)
         if (t) t.wc.setAudioMuted(!t.wc.isAudioMuted())
@@ -1720,30 +1699,18 @@ export class Browser implements TabHost, FloatingHost {
       case 'media':
         return this.mediaCard(a.id, a.op)
       case 'back':
-        return void (tab?.wc.navigationHistory.canGoBack() && tab.wc.navigationHistory.goBack())
       case 'forward':
-        return void (tab?.wc.navigationHistory.canGoForward() && tab.wc.navigationHistory.goForward())
       case 'reload':
-        if (!tab) return
-        return a.hard ? tab.wc.reloadIgnoringCache() : tab.wc.reload()
       case 'stop':
-        return void tab?.wc.stop()
-      case 'zoom': {
-        if (!tab) return
-        const level = a.delta === 0 ? 0 : Math.max(-6, Math.min(9, tab.wc.getZoomLevel() + a.delta * 0.5))
-        tab.wc.setZoomLevel(level)
-        this.toast(`Zoom ${Math.round(Math.pow(1.2, level) * 100)}%`)
-        return this.emitSoon()
-      }
-      case 'copyUrl': {
-        if (!tab) return
-        const url = withoutTracking(tab.wc.getURL())
-        clipboard.writeText(a.markdown ? `[${tab.wc.getTitle()}](${url})` : url)
-        return this.toast(a.markdown ? 'Copied URL as Markdown' : 'Copied URL')
-      }
+      case 'zoom':
+      case 'copyUrl':
       case 'devtools':
+      case 'find': {
         if (!tab) return
-        return tab.wc.isDevToolsOpened() ? tab.wc.closeDevTools() : tab.wc.openDevTools({ mode: 'detach' })
+        const toast = runPageAction(tab.wc, a)
+        if (toast) this.toast(toast)
+        return a.type === 'zoom' ? this.emitSoon() : undefined
+      }
       case 'newFolder':
         space.pinned.unshift({ kind: 'folder', id: newId(), name: a.name || 'New Folder', open: true, children: [] })
         return this.changed()
@@ -1758,17 +1725,8 @@ export class Browser implements TabHost, FloatingHost {
         if (f) f.name = a.name.trim() || f.name
         return this.changed()
       }
-      case 'deleteFolder': {
-        const hit = findInPinned(space.pinned, a.id)
-        const f = hit?.list[hit.index]
-        if (!hit || f?.kind !== 'folder') return
-        if (!f.live) {
-          hit.list.splice(hit.index, 1, ...f.children)
-          return this.changed()
-        }
-        hit.list.splice(hit.index, 1)
-        return this.forgetPinned(space, f.children)
-      }
+      case 'deleteFolder':
+        return this.deleteFolder(space, a.id)
       case 'saveLiveFolder':
         return this.saveLiveFolder(space, a.id, a.name, a.source)
       case 'refreshLiveFolder':
@@ -1785,22 +1743,8 @@ export class Browser implements TabHost, FloatingHost {
       case 'createSpace':
         this.setOverlay({ kind: 'none' }, false)
         return this.createSpace(a)
-      case 'updateSpace': {
-        const s = this.store.space(a.id)
-        if (!s) return
-        if (a.name !== undefined) s.name = a.name
-        if (a.emoji !== undefined) s.emoji = a.emoji || undefined
-        if (a.color) s.color = a.color
-        if (a.color2 !== undefined) s.color2 = a.color2 || undefined
-        if (a.profileId && a.profileId !== s.profileId && this.store.profile(a.profileId)) {
-          for (const n of spaceItems(this.state, s)) this.dropLive(n.id)
-          s.profileId = a.profileId
-          s.splits = []
-          if (s.id === this.space.id && s.activeItemId) return this.activate(s.activeItemId)
-          this.layout()
-        }
-        return this.changed()
-      }
+      case 'updateSpace':
+        return this.updateSpace(a)
       case 'deleteSpace':
         return this.deleteSpace(a.id)
       case 'renameProfile': {
@@ -1835,16 +1779,8 @@ export class Browser implements TabHost, FloatingHost {
         sp.root = root
         return this.relayout()
       }
-      case 'toggleSidebar': {
-        const s = this.state.settings
-        s.sidebarVisible = !s.sidebarVisible
-        this.cur.sidebarReveal = false
-        if (this.window.overlayMode.kind === 'sidebar') this.window.setOverlay({ kind: 'none' }, undefined)
-        this.window.setTrafficLights(s.sidebarVisible)
-        this.relayout()
-        if (this.tour && this.window.overlayMode.kind === 'none') this.setOverlay({ kind: 'tour', step: this.tour }, false)
-        return this.tourEvent('toggleSidebar')
-      }
+      case 'toggleSidebar':
+        return this.toggleSidebar()
       case 'sidebarReveal': {
         if (this.state.settings.sidebarVisible || this.cur.sidebarReveal === a.show || this.panelInFront()) return
         this.cur.sidebarReveal = a.show
@@ -1858,39 +1794,18 @@ export class Browser implements TabHost, FloatingHost {
       case 'endTour':
         this.tour = undefined
         return this.setOverlay({ kind: 'none' })
-      case 'settings': {
-        Object.assign(this.state.settings, validSettingsPatch(this.state.settings, a.patch))
-        this.adblock.sync(this.state.settings)
-        if (a.patch.theme) nativeTheme.themeSource = a.patch.theme
-        if (a.patch.sidebarVisible !== undefined) this.window.setTrafficLights(a.patch.sidebarVisible)
-        if (a.patch.autoUpdate !== undefined) this.updater.sync()
-        return this.relayout()
-      }
+      case 'settings':
+        return this.changeSettings(a.patch)
       case 'recordShortcut':
         this.recordingShortcut = a.on === true
         return
-      case 'searchEngine':
-        if (!Object.hasOwn(SEARCH_ENGINES, a.engine)) return
-        this.state.settings.searchEngine = a.engine
-        return this.changed()
       case 'littleArc':
         return void this.openLittle(a.url)
       case 'peek':
         if (a.op === 'close') return this.closePeek()
         return this.expandPeek(a.op === 'split')
-      case 'openInChrome': {
-        const t = a.id ? this.live.get(a.id) : tab
-        const url = t?.wc.getURL() || (a.id ? findItem(this.state, a.id)?.item.url : undefined)
-        if (!url) return
-        const ok = await openInChrome(url)
-        return this.toast(ok ? 'Opened in Chrome' : 'Chrome was not found on this computer')
-      }
-      case 'find': {
-        if (!tab) return
-        if (!a.query) return void tab.wc.stopFindInPage('clearSelection')
-        tab.wc.findInPage(a.query, { forward: a.forward ?? true, findNext: a.findNext ?? false })
-        return
-      }
+      case 'openInChrome':
+        return this.openTabInChrome(a.id ? this.live.get(a.id) : tab, a.id)
       case 'stopFind':
         tab?.wc.stopFindInPage('keepSelection')
         return this.setOverlay({ kind: 'none' })
@@ -1901,33 +1816,21 @@ export class Browser implements TabHost, FloatingHost {
         return
       case 'downloadsClear':
         return this.downloads.clearFinished()
-      case 'archiveRestore': {
-        const entry = this.state.archive.find((x) => x.id === a.id)
-        if (!entry) return
-        this.state.archive = this.state.archive.filter((x) => x.id !== a.id)
-        this.setOverlay({ kind: 'none' }, false)
-        this.newTab(entry.url, { spaceId: this.store.space(entry.spaceId) ? entry.spaceId : undefined })
-        return
-      }
+      case 'archiveRestore':
+        return this.restoreArchived(a.id)
       case 'archiveClear':
         this.state.archive = []
         return this.changed()
       case 'import': {
         if (!a.keepOverlay) this.setOverlay({ kind: 'none' }, false)
-        try {
-          const summary = await runImport(this, a.source, a.path)
-          if (summary) this.toast(summary)
-        } catch (err) {
-          console.error('[import]', err)
-          this.toast(`Import failed: ${(err as Error).message}`)
-        }
-        return
+        const summary = await runImport(this, a.source, a.path)
+        return summary ? this.toast(summary) : undefined
       }
       case 'exportBookmarks':
         this.setOverlay({ kind: 'none' }, false)
         return this.exportBookmarks()
       case 'importChoices': {
-        const summary = await importChoices(this, (this.importFound ?? []).filter((c) => a.ids.includes(c.id)))
+        const summary = await importChoices(this, this.imports.chosen(a.ids))
         if (summary) this.toast(summary)
         if (this.tour === 'import') this.setOverlay({ kind: 'tour', step: nextStep('import')! }, false)
         return
@@ -1937,13 +1840,8 @@ export class Browser implements TabHost, FloatingHost {
       case 'command':
         if (!a.keepOverlay) this.setOverlay({ kind: 'none' }, false)
         return this.runCommand(a.id)
-      case 'adblockToggleSite': {
-        const t = a.id ? this.live.get(a.id) : tab
-        const toggled = t && this.adblock.toggleSite(this.state.settings, t.wc)
-        if (!toggled) return
-        this.toast(toggled.allowed ? `Ads allowed on ${toggled.host}` : `Blocking ads on ${toggled.host}`)
-        return this.changed()
-      }
+      case 'adblockToggleSite':
+        return this.toggleAdblockOn(a.id ? this.live.get(a.id) : tab)
       case 'sitePermission':
         if (this.store.profile(a.profileId) && this.profiles.setSitePermission(a.profileId, a.origin, a.key, a.setting)) this.emitSoon()
         return
@@ -1974,6 +1872,93 @@ export class Browser implements TabHost, FloatingHost {
     }
   }
 
+  private resetToSaved(id: ID): void {
+    const item = findItem(this.state, id)?.item
+    if (!item?.savedUrl) return
+    item.url = item.savedUrl
+    void this.live.get(id)?.load(item.savedUrl)
+    this.activate(id)
+  }
+
+  private unload(id: ID): void {
+    const item = findItem(this.state, id)?.item
+    this.dropLive(id)
+    if (item?.savedUrl) item.url = item.savedUrl
+    if (this.space.activeItemId === id) this.space.activeItemId = this.nextActiveAfter(this.space, id)
+    this.relayout()
+  }
+
+  private deleteFolder(space: Space, id: ID): void {
+    const hit = findInPinned(space.pinned, id)
+    const f = hit?.list[hit.index]
+    if (!hit || f?.kind !== 'folder') return
+    if (!f.live) {
+      hit.list.splice(hit.index, 1, ...f.children)
+      return this.changed()
+    }
+    hit.list.splice(hit.index, 1)
+    this.forgetPinned(space, f.children)
+  }
+
+  private updateSpace(a: Extract<Action, { type: 'updateSpace' }>): void {
+    const s = this.store.space(a.id)
+    if (!s) return
+    if (a.name !== undefined) s.name = a.name
+    if (a.emoji !== undefined) s.emoji = a.emoji || undefined
+    if (a.color) s.color = a.color
+    if (a.color2 !== undefined) s.color2 = a.color2 || undefined
+    if (a.profileId && a.profileId !== s.profileId && this.store.profile(a.profileId)) {
+      for (const n of spaceItems(this.state, s)) this.dropLive(n.id)
+      s.profileId = a.profileId
+      s.splits = []
+      if (s.id === this.space.id && s.activeItemId) return this.activate(s.activeItemId)
+      this.layout()
+    }
+    this.changed()
+  }
+
+  private toggleSidebar(): void {
+    const s = this.state.settings
+    s.sidebarVisible = !s.sidebarVisible
+    this.cur.sidebarReveal = false
+    if (this.window.overlayMode.kind === 'sidebar') this.window.setOverlay({ kind: 'none' }, undefined)
+    this.window.setTrafficLights(s.sidebarVisible)
+    this.relayout()
+    if (this.tour && this.window.overlayMode.kind === 'none') this.setOverlay({ kind: 'tour', step: this.tour }, false)
+    this.tourEvent('toggleSidebar')
+  }
+
+  private changeSettings(patch: Extract<Action, { type: 'settings' }>['patch']): void {
+    Object.assign(this.state.settings, validSettingsPatch(this.state.settings, patch, isMac))
+    this.adblock.sync(this.state.settings)
+    if (patch.theme) nativeTheme.themeSource = patch.theme
+    if (patch.sidebarVisible !== undefined) this.window.setTrafficLights(patch.sidebarVisible)
+    if (patch.autoUpdate !== undefined) this.updater.sync()
+    this.relayout()
+  }
+
+  private async openTabInChrome(tab: LiveTab | undefined, id?: ID): Promise<void> {
+    const url = tab?.wc.getURL() || (id ? findItem(this.state, id)?.item.url : undefined)
+    if (!url) return
+    const ok = await openInChrome(url)
+    this.toast(ok ? 'Opened in Chrome' : 'Chrome was not found on this computer')
+  }
+
+  private restoreArchived(id: ID): void {
+    const entry = this.state.archive.find((x) => x.id === id)
+    if (!entry) return
+    this.state.archive = this.state.archive.filter((x) => x.id !== id)
+    this.setOverlay({ kind: 'none' }, false)
+    this.newTab(entry.url, { spaceId: this.store.space(entry.spaceId) ? entry.spaceId : undefined })
+  }
+
+  private toggleAdblockOn(tab: LiveTab | undefined): void {
+    const toggled = tab && this.adblock.toggleSite(this.state.settings, tab.wc)
+    if (!toggled) return
+    this.toast(toggled.allowed ? `Ads allowed on ${toggled.host}` : `Blocking ads on ${toggled.host}`)
+    this.changed()
+  }
+
   onTabChanged(tab: LiveTab, change: { url?: string; title?: string; favicon?: string; navigated?: boolean }): void {
     const item = findItem(this.state, tab.itemId)?.item
     if (!item) return
@@ -1997,7 +1982,7 @@ export class Browser implements TabHost, FloatingHost {
     if (persist) this.store.save()
     if (this.floating.tabId === tab.itemId) {
       // Same-page navigations (YouTube's next video) aren't `navigated` and keep the video.
-      if (change.navigated) this.setMedia(closed(this.media, tab.itemId))
+      if (change.navigated) this.setMedia(mediaState.closed(this.media, tab.itemId))
       else this.floating.update()
     }
     this.emitSoon()
@@ -2245,40 +2230,6 @@ export class Browser implements TabHost, FloatingHost {
     win.show()
     win.focus()
   }
-}
-
-const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
-  theme: ['system', 'light', 'dark'],
-  searchEngine: Object.keys(SEARCH_ENGINES)
-}
-
-function validSettingsPatch(current: Settings, patch: unknown): Partial<Settings> {
-  const clean: Record<string, unknown> = {}
-  if (!patch || typeof patch !== 'object') return clean
-  for (const [key, value] of Object.entries(patch)) {
-    if (!Object.hasOwn(current, key)) continue
-    const now = (current as unknown as Record<string, unknown>)[key]
-    if (key === 'shortcuts') {
-      const shortcuts = validShortcuts(value, isMac)
-      if (shortcuts) clean[key] = shortcuts
-      continue
-    }
-    if (key === 'linkRoutes') {
-      const routes = validRoutes(value)
-      if (routes) clean[key] = routes
-      continue
-    }
-    if (Array.isArray(now)) {
-      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) clean[key] = value
-      continue
-    }
-    if (typeof value !== typeof now) continue
-    if (typeof value === 'number' && !Number.isFinite(value)) continue
-    const allowed = ENUMS[key as keyof Settings]
-    if (allowed && !allowed.includes(value as string)) continue
-    clean[key] = value
-  }
-  return clean as Partial<Settings>
 }
 
 function short(id: ID): string {

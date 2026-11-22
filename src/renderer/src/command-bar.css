@@ -1,0 +1,125 @@
+.command .field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  height: 64px;
+  position: relative;
+}
+
+.command .field::after {
+  content: '';
+  position: absolute;
+  left: 52px;
+  right: 22px;
+  bottom: 0;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.command .field input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 20px;
+}
+
+.command .field input::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.command .results {
+  padding: 8px 10px 10px;
+  max-height: none;
+}
+
+.command .result {
+  height: 50px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.command .result .t {
+  font-weight: 500;
+}
+
+.command .result .ico {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.command .result.sel {
+  background: var(--space-strong);
+  color: #fff;
+}
+
+.command .result.sel .ico {
+  background: #fff;
+  color: #1d1b22;
+}
+
+.command .result.sel .s,
+.command .result.sel .hint {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.command .result .hint {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.command .result .go {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  flex: none;
+}
+
+.command .result.sel .go {
+  background: #fff;
+  color: var(--space-strong);
+}
+
+.command .field .target {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--field);
+}
+
+.command .site-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: 7px;
+  background: var(--space-strong);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.command .site-chip .fav-img {
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.command .field .tab-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 13px;
+  color: var(--text-3);
+}
