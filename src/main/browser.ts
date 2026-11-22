@@ -173,6 +173,8 @@ export class Browser implements TabHost, FloatingHost {
   readonly canvases = new Canvases(this)
   private readonly liveFolders = new LiveFolders(this)
   private media: MediaState = emptyMedia()
+  /** The space editor's unsaved colors; no `spaceId` is a new space, shown on its window's current one. */
+  private colorPreview: { w: WindowSession; spaceId?: ID; color: string; color2?: string } | undefined
   private readonly floating = new FloatingPlayer(this)
   private onScreen = new Set<ID>()
   private videoTabs = new Set<ID>()
@@ -409,6 +411,7 @@ export class Browser implements TabHost, FloatingHost {
     this.wins = this.wins.filter((x) => x !== w)
     logInfo(`${this.incognito ? 'incognito ' : ''}window ${short(w.view.id)} closed, ${this.wins.length} left`)
     clearInterval(w.sidebarRevealWatch)
+    if (this.colorPreview?.w === w) this.colorPreview = undefined
     w.peek?.destroy()
     w.peek = undefined
     if (this.wins.length) {
@@ -560,7 +563,7 @@ export class Browser implements TabHost, FloatingHost {
     const open = !win.isDestroyed()
     const mode = w.main.overlayMode
     return {
-      ...(w === this.cur ? this.state : stateForView(this.state, w.view)),
+      ...this.withColorPreview(w, w === this.cur ? this.state : stateForView(this.state, w.view)),
       live,
       downloads: this.downloads.items,
       extensions: this.extensionList,
@@ -577,6 +580,13 @@ export class Browser implements TabHost, FloatingHost {
       sitePermissions: {},
       media: { cards: [...this.media.cards], floating: this.media.floating, videos: this.media.cards.filter((id) => this.videoTabs.has(id)) }
     }
+  }
+
+  private withColorPreview<T extends { activeSpaceId: ID; spaces: Space[] }>(w: WindowSession, state: T): T {
+    const p = this.colorPreview
+    const id = p && (p.spaceId ?? (p.w === w ? state.activeSpaceId : undefined))
+    if (!id) return state
+    return { ...state, spaces: state.spaces.map((s) => (s.id === id ? { ...s, color: p.color, color2: p.color2 } : s)) }
   }
 
   emit(): void {
@@ -978,6 +988,7 @@ export class Browser implements TabHost, FloatingHost {
     if (mode.kind !== 'sidebar' && mode.kind !== 'split-drop') this.cur.tabDrag = undefined
     this.watchSidebarReveal(mode.kind === 'sidebar' && !this.cur.tabDrag)
     if (mode.kind !== 'switcher') this.cur.switcher = undefined
+    if (mode.kind !== 'space-editor' && this.colorPreview?.w === this.cur) this.colorPreview = undefined
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, this.overlayRect(mode))
     if (!this.state.settings.sidebarVisible) this.window.setTrafficLights(mode.kind === 'sidebar')
@@ -1846,6 +1857,9 @@ export class Browser implements TabHost, FloatingHost {
       }
       case 'overlay':
         return this.setOverlay(a.mode)
+      case 'previewSpaceColors':
+        this.colorPreview = { w: this.cur, spaceId: a.spaceId, color: a.color, color2: a.color2 || undefined }
+        return this.emitSoon()
       case 'endTour':
         this.tour = undefined
         return this.setOverlay({ kind: 'none' })

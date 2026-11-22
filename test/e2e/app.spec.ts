@@ -129,6 +129,25 @@ test("the space editor's own color picker sets a custom color, and a second colo
   await expect.poll(() => ui.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--space-2'))).toBe(s.color)
 })
 
+test("the space editor previews a color in the sidebar until it's saved, and puts the old one back when cancelled", async () => {
+  const s = await space()
+  const ui = await pageWithUrl('index.html')
+  const sidebarColor = () => ui.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--space'))
+  const savedColor = () => app.evaluate((_e, id) => (globalThis as any).arcBrowser.state.spaces.find((x: { id: string }) => x.id === id).color, s.id)
+  const overlay = await pageWithUrl('overlay.html')
+  for (const close of [() => overlay.locator('.actions').getByRole('button', { name: 'Cancel' }).click(), () => overlay.locator('.scrim').click({ position: { x: 5, y: 5 } })]) {
+    await dispatch({ type: 'overlay', mode: { kind: 'space-editor', spaceId: s.id } })
+    const swatch = overlay.locator(`.color-row .sw:not(.custom-sw):not([title="${s.color}"])`).first()
+    const picked = (await swatch.getAttribute('title'))!
+    await swatch.click()
+    await expect.poll(sidebarColor).toBe(picked)
+    expect(await savedColor()).toBe(s.color)
+    await close()
+    await expect.poll(sidebarColor).toBe(s.color)
+  }
+  expect(await savedColor()).toBe(s.color)
+})
+
 test('pages start below the native caption buttons on Windows and Linux', async () => {
   const ui = await pageWithUrl('index.html')
   const mac = process.platform === 'darwin'
