@@ -13,7 +13,7 @@ macOS · Windows · Linux (experimental)<br>
 
 ## Contents
 
-[Features](#features) · [Install](#install) · [Moving from Arc](#moving-from-arc) · [Shortcuts](#keyboard-shortcuts) · [FAQ](#faq) · [Contributing](#contributing)
+[Features](#features) · [Install](#install) · [Moving from Arc](#moving-from-arc) · [Shortcuts](#keyboard-shortcuts) · [FAQ](#faq) · [Contributing](#contributing) · [Report a bug](https://github.com/yenebeb/yarc/issues/new?template=bug.yml) · [Request a feature](https://github.com/yenebeb/yarc/issues/new?template=feature.yml)
 
 ## Features
 
@@ -208,7 +208,7 @@ One person, in their spare time. YARC is independent and not affiliated with The
 
 ## Contributing
 
-Issues and pull requests are welcome. If something doesn't behave the way Arc did, open an issue saying what Arc did. If YARC freezes, attach the error log.
+Found a bug? [Report it](https://github.com/yenebeb/yarc/issues/new?template=bug.yml). Missing something from Arc, or have an idea? [Request a feature](https://github.com/yenebeb/yarc/issues/new?template=feature.yml). Pull requests are welcome too.
 
 To build it yourself: `pnpm install && pnpm dev`. Building, releasing and how the code fits together are in [docs/development.md](docs/development.md).
 
