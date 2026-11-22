@@ -987,6 +987,30 @@ test('a downloaded update opens the relaunch card only after a week, then at mos
   })
 })
 
+test('the peeking sidebar stays out while the pointer is near it and slides back once it moves over the page', async () => {
+  await dispatch({ type: 'open', url: `${base}/peek-away`, where: 'tab' })
+  await dispatch({ type: 'toggleSidebar' })
+  await dispatch({ type: 'sidebarReveal', show: true })
+  const kind = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlayMode.kind)
+  const moveIn = (target: 'overlay' | 'page', x: number) =>
+    app.evaluate(
+      (_e, [t, px]) => {
+        const b = (globalThis as any).arcBrowser
+        const wc = t === 'overlay' ? b.window.overlay.webContents : b.activeTab().wc
+        wc.sendInputEvent({ type: 'mouseMove', x: px, y: 200 })
+      },
+      [target, x] as const
+    )
+  await moveIn('overlay', 40)
+  // Just past the sidebar's edge, over the page, is still near it.
+  await moveIn('page', 10)
+  await new Promise((r) => setTimeout(r, 700))
+  expect(await kind()).toBe('sidebar')
+  await moveIn('page', 600)
+  await expect.poll(kind).toBe('none')
+  await dispatch({ type: 'toggleSidebar' })
+})
+
 test('dragging a tab inside the peeking sidebar drops in the sidebar, not on the split zones', async () => {
   for (const n of ['peek-fav', 'peek-tube']) await dispatch({ type: 'open', url: `${base}/${n}`, where: 'tab' })
   const fav = (await space()).today.find((t) => t.url.endsWith('/peek-fav'))!

@@ -143,7 +143,7 @@ class WindowSession {
   peek: Peek | undefined
   sidebarReveal = false
   tabDrag: ID | undefined
-  sidebarRevealWatch: ReturnType<typeof setInterval> | undefined
+  sidebarRevealHide: ReturnType<typeof setTimeout> | undefined
   fullscreenTab: LiveTab | undefined
   switcher: { order: ID[]; index: number } | undefined
   layout: AppState['layout'] = { content: { x: 0, y: 0, width: 0, height: 0 }, views: [] }
@@ -410,7 +410,7 @@ export class Browser implements TabHost, FloatingHost {
   private onWindowClosed(w: WindowSession): void {
     this.wins = this.wins.filter((x) => x !== w)
     logInfo(`${this.incognito ? 'incognito ' : ''}window ${short(w.view.id)} closed, ${this.wins.length} left`)
-    clearInterval(w.sidebarRevealWatch)
+    clearTimeout(w.sidebarRevealHide)
     if (this.colorPreview?.w === w) this.colorPreview = undefined
     w.peek?.destroy()
     w.peek = undefined
@@ -1068,22 +1068,19 @@ export class Browser implements TabHost, FloatingHost {
 
   private watchSidebarReveal(on: boolean): void {
     const w = this.cur
-    clearInterval(w.sidebarRevealWatch)
-    w.sidebarRevealWatch = undefined
-    if (!on) return
-    let awaySince = 0
-    w.sidebarRevealWatch = setInterval(() => {
-      const win = w.main.win
-      if (win.isDestroyed()) return clearInterval(w.sidebarRevealWatch)
-      const b = win.getContentBounds()
+    clearTimeout(w.sidebarRevealHide)
+    w.sidebarRevealHide = undefined
+    if (!on) return w.main.watchPointer(undefined)
+    w.main.watchPointer((p) => {
       const s = this.state.settings
-      const p = screen.getCursorScreenPoint()
       const reach = s.sidebarWidth + PAD + SIDEBAR_REVEAL_GRACE_PX
-      const near = s.sidebarRight ? p.x >= b.x + b.width - reach : p.x <= b.x + reach
-      if (near && p.y >= b.y - SIDEBAR_REVEAL_GRACE_PX && p.y <= b.y + b.height + SIDEBAR_REVEAL_GRACE_PX) awaySince = 0
-      else if (!awaySince) awaySince = Date.now()
-      else if (Date.now() - awaySince >= SIDEBAR_REVEAL_HIDE_DELAY_MS) this.inWin(w, () => this.setOverlay({ kind: 'none' }, false))
-    }, 50)
+      if (s.sidebarRight ? p.x >= w.main.size().width - reach : p.x <= reach) {
+        clearTimeout(w.sidebarRevealHide)
+        w.sidebarRevealHide = undefined
+      } else {
+        w.sidebarRevealHide ??= setTimeout(() => this.inWin(w, () => this.setOverlay({ kind: 'none' }, false)), SIDEBAR_REVEAL_HIDE_DELAY_MS)
+      }
+    })
   }
 
   openPeek(profileId: ID, url: string): void {

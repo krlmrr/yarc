@@ -4,7 +4,7 @@ name: dependabot-automerge
 # `release:now` label and are released right away, not with the daily release: they carry Chromium
 # and V8 security fixes. The others get the `release:skip` label and no release of their own, so users
 # aren't asked to update for a dev dependency; they ship with the next release of a real change.
-# Majors wait for a person: CI doesn't run the e2e tests, and a major can break the app at runtime.
+# Majors wait for a person: only `check` gates a merge (not the e2e tests), and a major can break the app at runtime.
 # Supply-chain risk is limited by Dependabot's cooldown (.github/dependabot.yml): a new version of
 # any package, electron included, is only proposed after it has been out for a day.
 on: pull_request
