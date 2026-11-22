@@ -13,6 +13,7 @@ let app: ElectronApplication
 let server: Server
 let base = ''
 let feedPosts: string[] = []
+const hits: string[] = []
 const userData = mkdtempSync(join(tmpdir(), 'yarc-e2e-'))
 
 const page = (name: string) =>
@@ -61,6 +62,7 @@ async function pageWithUrl(fragment: string): Promise<Page> {
 
 test.beforeAll(async () => {
   server = createServer((req, res) => {
+    hits.push(req.url ?? '')
     if (req.url === '/never-loads') return
     if (req.url === '/feed.xml') {
       res.setHeader('content-type', 'application/rss+xml')
@@ -69,6 +71,7 @@ test.beforeAll(async () => {
     res.setHeader('content-type', 'text/html')
     if (req.url === '/blog') return res.end('<!doctype html><title>Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">')
     if (req.url === '/still-loading') return res.end('<!doctype html><title>Still loading</title><img src="/never-loads">')
+    if (req.url === '/dnr-page') return res.end('<!doctype html><title>dnr</title><script src="/dnr-static.js"></script><script src="/dnr-dynamic.js"></script><script src="/dnr-kept.js"></script>')
     res.end(req.url === '/video-page' ? VIDEO_PAGE : page((req.url ?? '/').slice(1) || 'home'))
   })
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
@@ -1166,6 +1169,54 @@ test('extensions get the chrome.* APIs on browser.* too', async () => {
     return result
   }, dir)
   expect(logged).toBe('browser.windows: object, browser.tabs.query: function')
+})
+
+// Electron has no declarativeNetRequest: YARC's own one makes MV3 blockers (uBlock Origin Lite) block.
+test('an extension’s declarativeNetRequest rules block requests, from its manifest and from its code', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'yarc-ext-'))
+  const blockScript = (id: number, urlFilter: string) => ({ id, action: { type: 'block' }, condition: { urlFilter, resourceTypes: ['script'] } })
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify({
+      manifest_version: 3,
+      name: 'dnr blocker',
+      version: '1.0',
+      permissions: ['declarativeNetRequest'],
+      background: { service_worker: 'bg.js' },
+      declarative_net_request: { rule_resources: [{ id: 'on', enabled: true, path: 'on.json' }, { id: 'off', enabled: false, path: 'off.json' }] }
+    })
+  )
+  writeFileSync(join(dir, 'on.json'), JSON.stringify([blockScript(1, '/dnr-static.js')]))
+  writeFileSync(join(dir, 'off.json'), JSON.stringify([blockScript(1, '/dnr-kept.js')]))
+  writeFileSync(
+    join(dir, 'bg.js'),
+    `chrome.declarativeNetRequest.updateDynamicRules({ addRules: [${JSON.stringify(blockScript(1, '||127.0.0.1^*/dnr-dynamic.js'))}] })
+      .then(() => chrome.declarativeNetRequest.getEnabledRulesets())
+      .then((ids) => console.log('dnr ready: ' + ids.join(',')))`
+  )
+  const extId = await app.evaluate(async (_e, extDir) => {
+    const b = (globalThis as any).arcBrowser
+    const ses = b.profiles.get(b.store.activeSpace.profileId).session
+    const ready = new Promise<string>((resolve) =>
+      ses.serviceWorkers.on('console-message', (_ev: unknown, d: { message: string }) => d.message.startsWith('dnr ready') && resolve(d.message))
+    )
+    const ext = await ses.extensions.loadExtension(extDir)
+    if ((await ready) !== 'dnr ready: on') throw new Error('unexpected rulesets')
+    return ext.id
+  }, dir)
+  const scripts = ['/dnr-static.js', '/dnr-dynamic.js', '/dnr-kept.js']
+  await dispatch({ type: 'open', url: `${base}/dnr-page`, where: 'tab' })
+  const tabId = (await space()).activeItemId!
+  try {
+    await expect.poll(() => hits.includes('/dnr-page') && hits.includes('/dnr-kept.js'), { timeout: 15_000 }).toBe(true)
+    expect(scripts.filter((s) => hits.includes(s))).toEqual(['/dnr-kept.js'])
+  } finally {
+    await dispatch({ type: 'close', id: tabId })
+    await app.evaluate((_e, id) => {
+      const b = (globalThis as any).arcBrowser
+      b.profiles.get(b.store.activeSpace.profileId).session.extensions.removeExtension(id)
+    }, extId)
+  }
 })
 
 test('an extension popup opens toward the page, whichever side the sidebar is on', async () => {

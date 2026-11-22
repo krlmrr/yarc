@@ -4,7 +4,8 @@ import { installChromeWebStore, updateExtensions } from 'electron-chrome-web-sto
 import { join } from 'node:path'
 import type { ID } from '../shared/types'
 import type { Browser } from './browser'
-import type { ProfileRuntime } from './profiles'
+import { NetRules } from './declarative-net-request'
+import { listenBeforeSendHeaders, type ProfileRuntime } from './profiles'
 import type { LiveTab } from './tab'
 
 const UPDATE_EVERY = 5 * 3600_000
@@ -22,6 +23,13 @@ export class Extensions {
 
   async setup(rt: ProfileRuntime): Promise<void> {
     const b = this.browser
+    const rules = new NetRules(rt.session, join(b.profiles.dir(rt.id), 'Extension Rules'), (wanted) =>
+      listenBeforeSendHeaders(rt.session, wanted ? (details, headers) => rules.requestHeaders(details, headers) : undefined)
+    )
+    // Before the library's preload, which freezes `chrome`.
+    const dnrPreload = join(__dirname, '../preload/extension-dnr.js')
+    rt.session.registerPreloadScript({ id: 'yarc-dnr', type: 'frame', filePath: dnrPreload })
+    rt.session.registerPreloadScript({ id: 'yarc-dnr-sw', type: 'service-worker', filePath: dnrPreload })
     const ext = new ElectronChromeExtensions({
       session: rt.session,
       createTab: async (details) => {

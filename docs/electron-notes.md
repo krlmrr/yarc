@@ -180,10 +180,14 @@ next to the bundle. A missing preload logs `Preload file not found at …`.
 
 ### Limitations that matter for a daily-driver browser
 
-- **There is no `chrome.declarativeNetRequest` in Electron 45.** It is absent from Electron's supported
-  extension API list. MV3 blockers such as **uBlock Origin Lite** will install but not block. The
-  web store also refuses MV2 by default (`minimumManifestVersion: 3`). Plan on a main-process
-  blocker instead, such as `@ghostery/adblocker-electron` (not evaluated here). Note that any
+- **Electron 45's `chrome.declarativeNetRequest` never loads static rulesets.** It isn't on Electron's
+  supported API list, but the binding exists: dynamic rules are stored and enforced, while
+  `getEnabledRulesets()` returns `[]` and manifest rulesets never apply (tested 2026-11-22). So MV3 blockers
+  such as **uBlock Origin Lite** install but barely block. YARC replaces it: `src/preload/extension-dnr.ts`
+  overwrites the API (registered before the library's preload, which freezes `chrome`, and moving rules out
+  of Electron's store once) and `src/main/declarative-net-request.ts` applies the rules in the request
+  listeners the built-in Ghostery blocker shares. The web store also refuses MV2 by default
+  (`minimumManifestVersion: 3`). Note that any
   **Electron `session.webRequest` listener takes precedence over `chrome.webRequest`** for that
   event, and Electron keeps only **one listener per event per session**.
 - No `chrome.commands`, `tabs.move/duplicate/discard/captureVisibleTab`, `action.enable/disable`,

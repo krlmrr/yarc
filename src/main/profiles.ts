@@ -1,4 +1,4 @@
-import { app, safeStorage, session, type Session, type WebContents } from 'electron'
+import { app, safeStorage, session, type OnBeforeSendHeadersListenerDetails, type Session, type WebContents } from 'electron'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { History } from './history'
@@ -118,9 +118,7 @@ export class Profiles {
     const ses = session.fromPartition(this.incognito ? `incognito-${id}` : Profiles.partition(id))
     if (!this.incognito) this.keepSessionCookies(id)
     ses.setUserAgent(app.userAgentFallback)
-    ses.webRequest.onBeforeSendHeaders({ urls: CHROME_UA_HOSTS.map((host) => `*://${host}/*`) }, (details, callback) => {
-      callback({ requestHeaders: { ...details.requestHeaders, 'User-Agent': userAgentFor(details.url, app.userAgentFallback) } })
-    })
+    listenBeforeSendHeaders(ses)
     ses.setSpellCheckerLanguages(app.getPreferredSystemLanguages().slice(0, 3).filter((l) => ses.availableSpellCheckerLanguages.includes(l)))
     this.permissions(ses, id)
     rt = { id, session: ses, history: new History(this.incognito ? undefined : this.dir(id)) }
@@ -223,4 +221,15 @@ export class Profiles {
     })
     wc.once('destroyed', () => this.permissionQueue.cancel(id))
   }
+}
+
+type HeaderRewrite = (details: OnBeforeSendHeadersListenerDetails, headers: Record<string, string>) => Record<string, string> | undefined
+
+/** A session has one onBeforeSendHeaders listener: Teams' UA, plus extensions' header rules while they have any (they cost every request a trip to main). */
+export function listenBeforeSendHeaders(ses: Session, extensions?: HeaderRewrite): void {
+  const urls = extensions ? ['<all_urls>'] : CHROME_UA_HOSTS.map((host) => `*://${host}/*`)
+  ses.webRequest.onBeforeSendHeaders({ urls }, (details, callback) => {
+    const headers = { ...details.requestHeaders, 'User-Agent': userAgentFor(details.url, app.userAgentFallback) }
+    callback({ requestHeaders: extensions?.(details, headers) ?? headers })
+  })
 }
