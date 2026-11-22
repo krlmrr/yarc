@@ -1,6 +1,6 @@
 // Not enableBlockingInSession(): it registers global IPC handlers per session (a second profile throws).
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
-import { ipcMain, utilityProcess, type HeadersReceivedResponse, type InsertCSSOptions, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session, type WebContents } from 'electron'
+import { ipcMain, utilityProcess, type HeadersReceivedResponse, type InsertCSSOptions, type IpcMainEvent, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session, type WebContents } from 'electron'
 import { readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -9,7 +9,9 @@ import { hostOf } from '../shared/url'
 import { netRulesFor } from './declarative-net-request'
 
 const PRELOAD = createRequire(__filename).resolve('@ghostery/adblocker-electron-preload')
+const SCRIPTLETS_PRELOAD = join(__dirname, '../preload/adblock-scriptlets.js')
 const FILTERS_MAX_AGE = 24 * 3600_000
+const FILTERS_CHECK_INTERVAL = 3600_000
 
 export class AdBlock {
   private engine: ElectronBlocker | undefined
@@ -23,29 +25,29 @@ export class AdBlock {
     private cacheFile: string,
     private onChange: () => void
   ) {
+    ipcMain.on('yarc:adblock-scriptlets', (e: IpcMainEvent, url: string) => {
+      e.returnValue = this.engine && this.activeFor(e.sender, url) ? firstInjection(this.engine, e, url) : []
+    })
+    // Without `msg` it's the page's first injection, which adblock-scriptlets already did synchronously.
     ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', (e: IpcMainInvokeEvent, url: string, msg?: unknown) => {
-      if (!this.engine || !this.activeFor(e.sender, url)) return
-      return this.engine.onInjectCosmeticFilters(inAskingFrame(e) as never, url, msg as never)
+      if (msg === undefined || !this.engine || !this.activeFor(e.sender, url)) return
+      return this.engine.onInjectCosmeticFilters(e as never, url, msg as never)
     })
     ipcMain.handle('@ghostery/adblocker/is-mutation-observer-enabled', (e: IpcMainInvokeEvent) =>
       this.engine ? this.engine.onIsMutationObserverEnabled(e) : false
     )
   }
 
-  /** Pages load unfiltered until it's ready. */
+  /** Pages load unfiltered until it's ready. Checked hourly: YouTube's fixes go stale within days in an app left open. */
   async load(): Promise<void> {
-    let cached: Buffer | undefined
-    let fresh = false
-    try {
-      const info = await stat(this.cacheFile)
-      cached = await readFile(this.cacheFile)
-      fresh = Date.now() - info.mtimeMs < FILTERS_MAX_AGE
-    } catch {}
-    if (!fresh) {
-      if (await buildEngine(this.cacheFile)) cached = await readFile(this.cacheFile)
-      else console.warn('[adblock] could not download filter lists')
+    const age = await stat(this.cacheFile).then((info) => Date.now() - info.mtimeMs, () => Infinity)
+    const built = age >= FILTERS_MAX_AGE && (await buildEngine(this.cacheFile))
+    if (age >= FILTERS_MAX_AGE && !built) console.warn('[adblock] could not download filter lists')
+    if (built || !this.engine) {
+      const cached = await readFile(this.cacheFile).catch(() => undefined)
+      if (cached) this.use(ElectronBlocker.deserialize(new Uint8Array(cached)))
     }
-    if (cached) this.use(ElectronBlocker.deserialize(new Uint8Array(cached)))
+    setTimeout(() => void this.load(), FILTERS_CHECK_INTERVAL).unref()
   }
 
   private use(engine: ElectronBlocker): void {
@@ -65,6 +67,7 @@ export class AdBlock {
     if (this.sessions.has(session)) return
     this.sessions.add(session)
     session.registerPreloadScript({ type: 'frame', filePath: PRELOAD })
+    session.registerPreloadScript({ type: 'frame', filePath: SCRIPTLETS_PRELOAD })
     // Electron keeps one listener per event: extensions' declarativeNetRequest rules go through this one too.
     session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
       const byExtension = netRulesFor(session)?.beforeRequest(details)
@@ -137,16 +140,13 @@ export class AdBlock {
   }
 }
 
-// Ghostery's webContents.executeJavaScript waits until the page has loaded (a listener per scriptlet), too late for most, and leaves a throwing one unhandled.
-function inAskingFrame(e: IpcMainInvokeEvent) {
-  return {
-    frameId: e.frameId,
-    processId: e.processId,
-    sender: {
-      insertCSS: (css: string, options: InsertCSSOptions) => e.sender.insertCSS(css, options),
-      executeJavaScript: (code: string) => e.senderFrame?.executeJavaScript(inOwnBlock(code)).catch(() => {})
-    }
-  }
+/** Ghostery's first injection: styles go to the page, scriptlets come back for the preload to run before the page's own scripts. */
+function firstInjection(engine: ElectronBlocker, e: IpcMainEvent, url: string): string[] {
+  const scriptlets: string[] = []
+  const sender = { insertCSS: (css: string, options: InsertCSSOptions) => e.sender.insertCSS(css, options), executeJavaScript: (code: string) => scriptlets.push(inOwnBlock(code)) }
+  // Async only in name: it calls the sender before returning (it never awaits).
+  void engine.onInjectCosmeticFilters({ frameId: e.frameId, processId: e.processId, sender } as never, url)
+  return scriptlets
 }
 
 // As Ghostery's content script does: at top level each scriptlet's helpers (proxyApplyFn, JSONPath) would overwrite the previous one's, and two Function.prototype.toString proxies then call each other forever.
