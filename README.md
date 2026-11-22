@@ -1,15 +1,15 @@
 <p align="center"><img src="build/icon.svg" width="128" alt="YARC's icon: a purple A in a pirate hat, bandana and eyepatch"></p>
 
-<h1 align="center">YARC</h1>
+<h1 align="center">YARC: an open-source Arc browser alternative</h1>
 
-<p align="center"><b>A free, open-source browser for people who loved Arc.</b><br>
-Arc shuts down on 22 December 2026. YARC keeps the sidebar, Spaces, the command bar and split view, and brings your Arc tabs along in one step.</p>
+<p align="center"><b>A free, open-source, Chromium-based browser for people who loved Arc.</b><br>
+Arc shuts down on 22 December 2026. YARC keeps its vertical-tab sidebar, Spaces, the command bar and split view, runs your Chrome extensions, and brings your Arc tabs along in one step.</p>
 
 <p align="center"><a href="https://github.com/yenebeb/yarc/releases/latest"><b>Download</b></a> · <a href="https://yenebeb.nl/yarc">Website</a> · <a href="#moving-from-arc">Moving from Arc</a><br>
 macOS · Windows · Linux (experimental)<br>
 <sub>An independent project, not affiliated with The Browser Company.</sub></p>
 
-![YARC: the sidebar with favorites, a pinned tab, a canvas and Today tabs, next to a Wikipedia page](docs/screenshots/sidebar.png)
+![YARC browser: the sidebar with favorites, a pinned tab, a canvas and Today tabs, next to a Wikipedia page](docs/screenshots/sidebar.png)
 
 ## Contents
 
@@ -49,7 +49,7 @@ Drag a tab onto the page. Up to four tabs, side by side or stacked.
 
 Links from pinned tabs and favorites to other sites open in a card over the page. `Esc` closes it, `⌘O` keeps it as a tab.
 
-### Canvases, YARC's Easels
+### Canvases, an alternative to Arc's Easels
 
 ![Capturing part of a page to a canvas, then pressing play to see it live](docs/screenshots/canvases.gif)
 
@@ -111,6 +111,8 @@ Coming from **Arc Shell**? It's the same app under a new name, and it updates li
 </details>
 
 ## Moving from Arc
+
+Import your Arc spaces, tabs and history into YARC in one step.
 
 > **Do this before 22 December 2026.** After that Arc won't open, though its files stay on disk.
 
@@ -174,6 +176,18 @@ In a Little Window: `Mod+O` moves the page into the main window, `Mod+Shift+O` p
 </details>
 
 ## FAQ
+
+**What happens when Arc shuts down?**
+On 22 December 2026 Arc stops opening; its files stay on disk. Import into YARC before then ([Moving from Arc](#moving-from-arc)), and export your passwords and Easels from Arc first, because YARC can't bring those along.
+
+**Is there an Arc browser for Windows and Linux?**
+YARC runs on macOS, Windows and Linux (experimental), with Arc's sidebar, Spaces and shortcuts on all three.
+
+**How do I export my Arc tabs and spaces?**
+You don't need to: YARC reads them straight from Arc's own files. Install YARC, press `⌘T` (`Ctrl+T` on Windows) and run **Import from Arc**.
+
+**Is YARC private?**
+It collects nothing: no telemetry, no account, no servers. It only goes online on its own to check for updates and to refresh its ad-blocking lists.
 
 **Can I sign in to Google?**
 Yes, including company SSO. Only sites that demand *managed* Google Chrome won't work; use *Open in Chrome* for those.
