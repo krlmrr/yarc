@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in YARC is broken or doesn't behave the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Screenshots or a screen recording help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: If Arc did it differently, say what Arc did.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a new space
+        2. Drag a tab into a folder
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: YARC version
+      description: "macOS: YARC menu → About YARC. Windows: sidebar menu → What's New."
+      placeholder: "0.2.10"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Error log
+      description: 'If YARC froze or crashed, drag in `main.log`: `~/Library/Logs/YARC/main.log` on macOS, `%APPDATA%\YARC\logs\main.log` on Windows.'

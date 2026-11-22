@@ -1,0 +1,20 @@
+name: Feature request
+description: Something you'd like YARC to do, or an Arc feature you miss
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like YARC to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What are you trying to get done? How do you work around it today?
+  - type: textarea
+    id: arc
+    attributes:
+      label: How did Arc do it?
+      description: If Arc had this, describe how it worked (shortcuts, where it lived in the UI). Skip if it's new.
