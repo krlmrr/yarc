@@ -35,6 +35,8 @@ async function launch(): Promise<ElectronApplication> {
   const exe = process.env.YARC_EXE
   const a = await electron.launch({
     ...(exe ? { executablePath: exe, args: [] } : { args: ['out/main/index.js'] }),
+    // Playwright otherwise adds --no-sandbox on Linux, and service-worker preloads (extension APIs) don't run without the sandbox.
+    chromiumSandbox: true,
     env: { ...process.env, YARC_USER_DATA: userData, YARC_TEST: '1' }
   })
   await a.firstWindow()
@@ -1328,4 +1330,20 @@ test('Whole Page captures the full length of a page, past what is on screen', as
   expect(size.image.height / size.image.width).toBeGreaterThan(2)
   expect(size.attached).toBe(false)
   await dispatch({ type: 'close', id: (await space()).activeItemId! })
+})
+
+test('zz probe audible after pause', async () => {
+  await dispatch({ type: 'open', url: `${base}/video-page` })
+  const video = (await space()).activeItemId!
+  await expect.poll(() => isPlaying(video), { timeout: 10_000 }).toBe(true)
+  const audible = () => app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.isCurrentlyAudible(), video)
+  const before: boolean[] = []
+  for (let i = 0; i < 6; i++) { before.push(await audible()); await new Promise((r) => setTimeout(r, 250)) }
+  await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('document.getElementById("v").pause()'), video)
+  const t0 = Date.now()
+  const after: string[] = []
+  for (let i = 0; i < 16; i++) { after.push(`${Date.now() - t0}:${await audible()}`); await new Promise((r) => setTimeout(r, 250)) }
+  const probe = await app.evaluate((_e, id) => (globalThis as any).arcBrowser.live.get(id).wc.executeJavaScript('JSON.stringify([...document.querySelectorAll("video")].map(v => ({paused: v.paused, ended: v.ended})))'), video)
+  console.log('AUDIBLE before', before.join(','), '| after', after.join(' '), '| videos', probe)
+  await dispatch({ type: 'close', id: video })
 })
