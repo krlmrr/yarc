@@ -5,6 +5,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import type { Settings } from '../shared/types'
+import { hostOf } from '../shared/url'
 import { netRulesFor } from './declarative-net-request'
 
 const PRELOAD = createRequire(__filename).resolve('@ghostery/adblocker-electron-preload')
@@ -156,12 +157,4 @@ export function inOwnBlock(scriptlet: string): string {
 function buildEngine(file: string): Promise<boolean> {
   const child = utilityProcess.fork(join(__dirname, 'adblock-build.js'), [file], { serviceName: 'YARC ad block lists' })
   return new Promise((resolve) => child.once('exit', (code) => resolve(code === 0)))
-}
-
-export function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
 }

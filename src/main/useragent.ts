@@ -7,11 +7,6 @@ export function browserUserAgent(fallback: string): string {
 export const CHROME_UA_HOSTS = ['teams.microsoft.com', 'teams.live.com', 'teams.cloud.microsoft']
 
 export function userAgentFor(url: string, ua: string): string {
-  let host = ''
-  try {
-    host = new URL(url).hostname
-  } catch {
-    return ua
-  }
-  return CHROME_UA_HOSTS.includes(host) ? ua.replace(/ Electron\/\S+/, '') : ua
+  const host = URL.parse(url)?.hostname
+  return host && CHROME_UA_HOSTS.includes(host) ? ua.replace(/ Electron\/\S+/, '') : ua
 }

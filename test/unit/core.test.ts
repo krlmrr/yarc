@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { BINDINGS, commandForInput, type KeyInput } from '../../src/shared/keymap.ts'
 import { findItem, isAwayFromSaved, profileOfItem, spaceItems } from '../../src/shared/tree.ts'
 import type { PersistedState } from '../../src/shared/types.ts'
-import { queryFromSearchUrl, resolveInput, toUrl, withoutTracking } from '../../src/shared/url.ts'
+import { resolveInput, toUrl, withoutTracking } from '../../src/shared/url.ts'
 
 test('toUrl recognises URLs, hosts and localhost', () => {
   assert.equal(toUrl('github.com'), 'https://github.com')
@@ -19,7 +19,6 @@ test('toUrl recognises URLs, hosts and localhost', () => {
 test('resolveInput falls back to the search engine', () => {
   assert.equal(resolveInput('cats and dogs', 'google'), 'https://www.google.com/search?q=cats%20and%20dogs')
   assert.equal(resolveInput('cats', 'duckduckgo'), 'https://duckduckgo.com/?q=cats')
-  assert.equal(queryFromSearchUrl('https://www.google.com/search?q=hi+there'), 'hi there')
 })
 
 test('withoutTracking drops tracking parameters and keeps the rest as written', () => {

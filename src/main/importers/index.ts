@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { Browser } from '../browser'
-import { newId, SPACE_COLORS } from '../store'
+import { MAX_ARCHIVE, newId, SPACE_COLORS } from '../store'
 import { FAVICON_MAX } from '../tab'
 import { SIDEBAR_WIDTH, type ArchivedTab, type ImportChoice, type PersistedState, type PinnedNode, type Profile, type Space, type TabItem } from '../../shared/types'
 import { parseArcSidebar, readArcJson } from './arc-sidebar'
@@ -21,7 +22,6 @@ export interface FoundChoice extends ImportChoice {
   profile: string
 }
 
-const MAX_ARCHIVE = 1000
 
 export async function runImport(browser: Browser, source: ImportSource, path?: string): Promise<string | undefined> {
   if (source === 'arc') return importArc(browser, path)
@@ -151,7 +151,7 @@ async function readJson(file: string): Promise<unknown> {
     return readArcJson(await readFile(file, 'utf8'))
   } catch {
     // Arc may be rewriting the file right now.
-    await new Promise((r) => setTimeout(r, 250))
+    await sleep(250)
     return readArcJson(await readFile(file, 'utf8'))
   }
 }

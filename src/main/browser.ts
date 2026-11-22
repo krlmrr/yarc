@@ -21,11 +21,12 @@ import {
 import { existsSync, readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { Action, DropTarget } from '../shared/actions'
 import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
 import { commandForInput, validShortcuts, type CommandId } from '../shared/keymap'
 import { cleanLiveSource, liveFolderName } from '../shared/live-folders'
-import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems, walkPinned } from '../shared/tree'
+import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems, stripKind, walkPinned } from '../shared/tree'
 import type {
   AppState,
   ExtensionInfo,
@@ -45,8 +46,8 @@ import type {
 import { appendPaneIn, flipSplit, gatherSplit, layoutPanes, movePane, PANE_BAR, paneIds, placePaneIn, removeFromSplits, resizeGroup, splitOf, type Side } from '../shared/split'
 import { isFloating, nextStep, stepAfter, type TourEvent, type TourStep } from '../shared/tour'
 import { routeFor, validRoutes } from '../shared/link-routes'
-import { resolveInput, SEARCH_ENGINES, withoutTracking } from '../shared/url'
-import { AdBlock, hostOf } from './adblock'
+import { hostOf, resolveInput, SEARCH_ENGINES, withoutTracking } from '../shared/url'
+import { AdBlock } from './adblock'
 import { bookmarksHtml } from './bookmarks-export'
 import { Canvases } from './canvas'
 import { recentSpotlights, SPOTLIGHTS, unseenSpotlights } from '../shared/spotlights'
@@ -69,7 +70,7 @@ import { Profiles, type ProfileRuntime } from './profiles'
 import { PROMPT_WIDTH, PromptView, type PromptAnchor } from './prompt-view'
 import { search, suggest } from './search'
 import { SharePicker } from './share-picker'
-import { incognitoState, newId, SPACE_COLORS, Store } from './store'
+import { incognitoState, MAX_ARCHIVE, newId, SPACE_COLORS, Store } from './store'
 import { LiveTab, type OpenDisposition, type TabHost } from './tab'
 import { handleUi } from './ui-origin'
 import { Updater } from './updater'
@@ -81,7 +82,6 @@ const isMac = process.platform === 'darwin'
 // Defined by electron.vite.config.ts from build/changelog.json; empty outside release builds.
 declare const __CHANGELOG__: Changelog
 const CHANGELOG: Changelog = __CHANGELOG__
-const MAX_ARCHIVE = 1000
 const UNLOAD_HIDDEN_AFTER = 3600_000
 const HOUSEKEEPING_EVERY = 5 * 60_000
 // Slack past the revealed sidebar's edge: room to grab it to resize, and no enter/leave flicker at the screen's edge.
@@ -834,7 +834,7 @@ export class Browser implements TabHost, FloatingHost {
     const tab = this.live.get(id)
     if (!tab || tab.destroyed || (!tab.playing && !tab.wc.isCurrentlyAudible())) return
     const found = await probeMedia(tab.wc)
-    if (found === null && !tab.playing) await new Promise((r) => setTimeout(r, AUDIBLE_SETTLE_MS))
+    if (found === null && !tab.playing) await sleep(AUDIBLE_SETTLE_MS)
     const still = () => this.outOfSight(id, tab)
     if (!still()) return
     const playing: LeftWith = found === null ? (tab.wc.isCurrentlyAudible() ? 'audio' : 'nothing') : found === 'audio' ? 'audio' : 'video'
@@ -1782,11 +1782,6 @@ export class Browser implements TabHost, FloatingHost {
         if (next) this.switchSpace(next.id)
         return
       }
-      case 'switchSpaceIndex': {
-        const s = this.state.spaces[a.index]
-        if (s) this.switchSpace(s.id)
-        return
-      }
       case 'createSpace':
         this.setOverlay({ kind: 'none' }, false)
         return this.createSpace(a)
@@ -2252,11 +2247,6 @@ export class Browser implements TabHost, FloatingHost {
   }
 }
 
-function stripKind<T extends TabItem>(item: T): TabItem {
-  const { kind: _kind, ...rest } = item as T & { kind?: string }
-  return { ...rest }
-}
-
 const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   theme: ['system', 'light', 'dark'],
   searchEngine: Object.keys(SEARCH_ENGINES)
@@ -2293,8 +2283,4 @@ function validSettingsPatch(current: Settings, patch: unknown): Partial<Settings
 
 function short(id: ID): string {
   return id.slice(0, 8)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

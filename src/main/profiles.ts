@@ -1,6 +1,7 @@
 import { app, safeStorage, session, type OnBeforeSendHeadersListenerDetails, type Session, type WebContents } from 'electron'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { writeFileAtomic } from './atomic-file'
 import { History } from './history'
 import { PermissionQueue, type MediaType } from './permission-queue'
 import { SessionCookies, type Cipher } from './session-cookies'
@@ -70,8 +71,7 @@ export class Profiles {
       d = new SiteDecisions(stored, (data) => {
         try {
           mkdirSync(this.dir(id), { recursive: true, mode: 0o700 })
-          writeFileSync(`${file}.tmp`, JSON.stringify(data), { mode: 0o600 })
-          renameSync(`${file}.tmp`, file)
+          writeFileAtomic(file, JSON.stringify(data))
         } catch (err) {
           console.error('Saving site permissions failed', err)
         }

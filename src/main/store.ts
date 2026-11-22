@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { SPACE_COLORS } from '../shared/colors'
+import { writeFileAtomic } from './atomic-file'
 import { upgradeSplit } from '../shared/split'
 import type { PersistedState, Profile, Settings, Space } from '../shared/types'
 
 export const newId = (): string => randomUUID()
+export const MAX_ARCHIVE = 1000
 
 export { SPACE_COLORS }
 
@@ -124,16 +126,7 @@ export class Store {
     if (!this.file) return
     this.beforeWrite?.()
     mkdirSync(dirname(this.file), { recursive: true })
-    const tmp = `${this.file}.tmp`
-    // On disk before it replaces the old one: a power cut can't leave a truncated state.json.
-    const fd = openSync(tmp, 'w', 0o600)
-    try {
-      writeSync(fd, JSON.stringify(this.state))
-      fsyncSync(fd)
-    } finally {
-      closeSync(fd)
-    }
-    renameSync(tmp, this.file)
+    writeFileAtomic(this.file, JSON.stringify(this.state))
   }
 
   replace(next: PersistedState): void {

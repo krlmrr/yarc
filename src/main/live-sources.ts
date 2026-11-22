@@ -133,12 +133,8 @@ function decode(s: string): string {
 
 function webUrl(href: string | undefined, base: string): string | undefined {
   if (!href) return undefined
-  try {
-    const url = new URL(href.trim(), base)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined
-  } catch {
-    return undefined
-  }
+  const url = URL.parse(href.trim(), base)
+  return url?.protocol === 'https:' || url?.protocol === 'http:' ? url.href : undefined
 }
 
 function unique(entries: LiveEntry[]): LiveEntry[] {

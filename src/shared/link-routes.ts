@@ -19,13 +19,8 @@ export function cleanMatch(input: string): string {
 
 /** A rule for a site also covers its subdomains; one with a path covers the pages under it. */
 export function routeFor(routes: readonly LinkRoute[], url: string): LinkRoute | undefined {
-  let u: URL
-  try {
-    u = new URL(url)
-  } catch {
-    return undefined
-  }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') return undefined
+  const u = URL.parse(url)
+  if (u?.protocol !== 'https:' && u?.protocol !== 'http:') return undefined
   const host = u.host.toLowerCase().replace(/^www\./, '')
   const path = u.pathname.toLowerCase().replace(/\/+$/, '')
   return routes.find((r) => {

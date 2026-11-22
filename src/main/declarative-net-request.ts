@@ -469,12 +469,8 @@ function patternAllows(pattern: string, url: string): boolean {
   if (pattern === '<all_urls>') return true
   const m = /^(\*|https?|wss?):\/\/([^/]+)\//.exec(pattern)
   if (!m) return false
-  let u: URL
-  try {
-    u = new URL(url)
-  } catch {
-    return false
-  }
+  const u = URL.parse(url)
+  if (!u) return false
   const scheme = u.protocol.slice(0, -1)
   if (m[1] === '*' ? !['http', 'https', 'ws', 'wss'].includes(scheme) : m[1] !== scheme) return false
   const host = m[2].replace(/:(\d+|\*)$/, '')

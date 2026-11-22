@@ -1,7 +1,8 @@
 // Electron never writes session cookies to the Cookies database, so Microsoft/Entra logins were gone after a quit (docs/electron-notes.md section 10).
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Cookie, CookiesSetDetails, Session } from 'electron'
+import { writeFileAtomic } from './atomic-file.ts'
 
 export interface Cipher {
   encrypt(text: string): Buffer
@@ -124,9 +125,7 @@ export class SessionCookies {
     this.dirty = false
     try {
       mkdirSync(dirname(this.file), { recursive: true })
-      const tmp = `${this.file}.tmp`
-      writeFileSync(tmp, encodeCookies(this.jar.list(), this.cipher), { mode: 0o600 })
-      renameSync(tmp, this.file)
+      writeFileAtomic(this.file, encodeCookies(this.jar.list(), this.cipher))
     } catch (err) {
       console.error('Could not save session cookies', err)
     }

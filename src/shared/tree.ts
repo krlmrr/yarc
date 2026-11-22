@@ -102,3 +102,8 @@ function stripHash(url: string): string {
   const i = url.indexOf('#')
   return (i >= 0 ? url.slice(0, i) : url).replace(/\/$/, '')
 }
+
+export function stripKind(item: TabItem): TabItem {
+  const { kind: _kind, ...rest } = item as TabItem & { kind?: string }
+  return rest
+}

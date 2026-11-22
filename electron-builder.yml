@@ -27,6 +27,7 @@ directories:
 files:
   - out/**
   - package.json
+  - "!**/node_modules/**/*.{map,d.ts,d.mts,d.cts,tsbuildinfo}"
 asar: true
 npmRebuild: false # nothing native to rebuild; skips @electron/rebuild (and the need for build tools)
 compression: normal

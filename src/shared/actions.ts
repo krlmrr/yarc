@@ -41,7 +41,6 @@ export type Action =
   | { type: 'refreshLiveFolder'; id: ID }
   | { type: 'switchSpace'; id: ID }
   | { type: 'switchSpaceRelative'; delta: 1 | -1 }
-  | { type: 'switchSpaceIndex'; index: number }
   | { type: 'createSpace'; name: string; emoji?: string; color: string; color2?: string; profileId?: ID | 'new'; profileName?: string }
   /** `color2: ''` goes back to one color. */
   | { type: 'updateSpace'; id: ID; name?: string; emoji?: string; color?: string; color2?: string; profileId?: ID }

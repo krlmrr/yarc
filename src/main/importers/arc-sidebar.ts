@@ -1,5 +1,6 @@
 // See docs/arc-data-format.md.
 import { randomUUID } from 'node:crypto'
+import { stripKind } from '../../shared/tree.ts'
 import type { PinnedFolder, PinnedNode, PinnedTab, TabItem } from '../../shared/types'
 import { isImportableUrl, isObj, num, str, type Obj } from './loose-json.ts'
 
@@ -281,7 +282,6 @@ function flatTabs(nodes: PinnedNode[]): PinnedTab[] {
   return nodes.flatMap((n) => (n.kind === 'folder' ? flatTabs(n.children) : n.kind === 'tab' ? [n] : []))
 }
 
-const stripKind = ({ kind: _kind, ...rest }: PinnedTab): TabItem => rest
 
 interface DataContainer {
   spaces: [string, Obj][]

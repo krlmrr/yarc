@@ -64,11 +64,7 @@ export class Peek implements TabHost {
 /** mail.google.com and calendar.google.com are one site. */
 export function sameSite(a: string, b: string): boolean {
   const site = (url: string) => {
-    try {
-      return getDomain(url) ?? new URL(url).hostname
-    } catch {
-      return url
-    }
+    return getDomain(url) ?? URL.parse(url)?.hostname ?? url
   }
   return site(a) === site(b)
 }

@@ -11,7 +11,8 @@ export default defineConfig({
   main: {
     define: { __CHANGELOG__: JSON.stringify(changelog) },
     build: {
-      externalizeDeps: true,
+      // Bundled so only the code we use ships; the rest stay in node_modules.
+      externalizeDeps: { exclude: ['tldts-experimental', '@ghostery/adblocker-electron'] },
       rollupOptions: { input: { index: resolve('src/main/index.ts'), 'adblock-build': resolve('src/main/adblock-build.ts') } }
     }
   },
