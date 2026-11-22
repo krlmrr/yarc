@@ -87,7 +87,7 @@ test.beforeAll(async () => {
     }
     res.setHeader('content-type', 'text/html')
     if (req.url === '/blog') return res.end('<!doctype html><title>Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">')
-    if (req.url === '/still-loading') return res.end('<!doctype html><title>Still loading</title><img src="/never-loads">')
+    if (req.url === '/still-loading') return res.end('<!doctype html><title>Still loading</title><script>window.seenByPage = window.scriptlets ?? 0</script><img src="/never-loads">')
     if (req.url === '/dnr-page') return res.end('<!doctype html><title>dnr</title><script src="/dnr-static.js"></script><script src="/dnr-dynamic.js"></script><script src="/dnr-redirect.js"></script><script src="/dnr-kept.js"></script>')
     res.end(req.url === '/video-page' ? VIDEO_PAGE : page((req.url ?? '/').slice(1) || 'home'))
   })
@@ -837,7 +837,7 @@ function wrapToString() {
 wrapToString()
 window.scriptlets = (window.scriptlets ?? 0) + 1`
 
-test('ad block scriptlets run while the page still loads, each in its own scope, and one that throws is caught', async () => {
+test('ad block scriptlets run before the page’s own scripts, each in its own scope, and one that throws is caught', async () => {
   await expect.poll(adblockReady).toBe(true)
   await app.evaluate((_e, scriptlet) => {
     const engine = (globalThis as any).arcBrowser.adblock.engine
@@ -854,10 +854,10 @@ test('ad block scriptlets run while the page still loads, each in its own scope,
     const ran = () =>
       app.evaluate(async () => {
         const wc = (globalThis as any).arcBrowser.activeTab().wc
-        return { loading: wc.isLoading(), count: await wc.mainFrame.executeJavaScript('window.scriptlets ?? 0') }
+        return { loading: wc.isLoading(), count: await wc.mainFrame.executeJavaScript('window.scriptlets ?? 0'), seenByPage: await wc.mainFrame.executeJavaScript('window.seenByPage') }
       })
     await expect.poll(async () => (await ran()).count).toBe(12)
-    expect((await ran()).loading).toBe(true)
+    expect(await ran()).toMatchObject({ loading: true, seenByPage: 12 })
     expect(await app.evaluate(() => (globalThis as any).arcBrowser.activeTab().wc.mainFrame.executeJavaScript('Function.prototype.toString.call(alert)'))).toContain('[native code]')
     const log = readFileSync(join(userData, 'logs', 'main.log'), 'utf8')
     expect(log).not.toContain('Script failed to execute')

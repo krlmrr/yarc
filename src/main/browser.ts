@@ -18,7 +18,7 @@ import {
   type WebContents
 } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Action, DropTarget } from '../shared/actions'
@@ -220,7 +220,9 @@ export class Browser implements TabHost, FloatingHost {
     const userData = app.getPath('userData')
     this.store = new Store(join(userData, 'state.json'))
     this.legacyWindowFile = join(userData, 'window.json')
-    this.adblock = new AdBlock(join(userData, 'adblock', 'engine.bin'), () => this.emitSlowly())
+    // engine.bin was built from Ghostery's stale copies of the lists.
+    void rm(join(userData, 'adblock', 'engine.bin'), { force: true })
+    this.adblock = new AdBlock(join(userData, 'adblock', 'lists.bin'), () => this.emitSlowly())
     this.updater = new Updater(this)
     this.adblock.sync(this.state.settings)
     void this.adblock.load()
