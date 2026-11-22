@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FILE_ID, IMAGE_TYPES, type CanvasImage, type CanvasLoad, type CanvasScene, type CaptureGeometry, type CaptureSource, type LiveCard } from '../shared/canvas'
 import { IPC } from '../shared/ipc'
-import { commandForInput, type CommandId } from '../shared/keymap'
+import { bindingLabel, commandForInput, type CommandId } from '../shared/keymap'
 import { findCanvas } from '../shared/tree'
 import type { CaptureTo } from '../shared/actions'
 import type { ID, PinnedCanvas, Rect, Space } from '../shared/types'
@@ -87,7 +87,7 @@ export class Canvases {
     let page = this.pages.get(id)
     if (page && !page.wc.isDestroyed()) return page
     page = new CanvasPage(id, (e, input) => {
-      const cmd = commandForInput(input, process.platform === 'darwin')
+      const cmd = commandForInput(input, process.platform === 'darwin', this.browser.state.settings.shortcuts)
       if (!cmd || !CANVAS_KEYS.has(cmd)) this.browser.handleInput(e, input)
     })
     this.pages.set(id, page)
@@ -300,7 +300,8 @@ export class Canvases {
     const hit = findCanvas(this.browser.state, id)
     const files = this.files(id)
     if (!hit || !files) throw new Error('no such canvas')
-    return { id, name: hit.canvas.name, scene: files.readScene(), files: files.readImages() }
+    const captureKey = bindingLabel('capture', process.platform === 'darwin', this.browser.state.settings.shortcuts)
+    return { id, name: hit.canvas.name, scene: files.readScene(), files: files.readImages(), captureKey }
   }
 
   private save(id: ID, scene: CanvasScene, newFiles: Record<string, CanvasImage>): void {

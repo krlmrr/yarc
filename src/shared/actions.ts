@@ -63,6 +63,8 @@ export type Action =
   | { type: 'overlay'; mode: OverlayMode }
   | { type: 'endTour' }
   | { type: 'settings'; patch: Partial<Settings> }
+  /** While Settings records a shortcut, key presses reach it instead of running commands. */
+  | { type: 'recordShortcut'; on: boolean }
   | { type: 'searchEngine'; engine: SearchEngine }
   | { type: 'littleArc'; url?: string }
   | { type: 'peek'; op: 'close' | 'expand' | 'split' }

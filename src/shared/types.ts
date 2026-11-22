@@ -1,3 +1,4 @@
+import type { Shortcuts } from './keymap'
 import type { LinkRoute } from './link-routes'
 import type { SitePermissionRow } from './permissions'
 import type { Side } from './split'
@@ -118,6 +119,7 @@ export interface Settings {
   adblockAllowlist: string[]
   autoUpdate: boolean
   floatVideos: boolean
+  shortcuts: Shortcuts
 }
 
 export interface PersistedState {

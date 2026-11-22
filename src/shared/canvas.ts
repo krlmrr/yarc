@@ -123,6 +123,7 @@ export interface CanvasLoad {
   name: string
   scene: CanvasScene | undefined
   files: Record<string, CanvasImage>
+  captureKey: string
 }
 
 /** The image's SHA-256: never a path. */

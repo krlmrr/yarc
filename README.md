@@ -129,7 +129,7 @@ Arc's Little Arc is called **Little Window** in YARC.
 
 ## Keyboard shortcuts
 
-Arc's shortcuts work. **Mod** is `⌘` on macOS and `Ctrl` on Windows. The full list is also in **Settings → Keyboard Shortcuts**.
+Arc's shortcuts work. **Mod** is `⌘` on macOS and `Ctrl` on Windows. The full list is also in **Settings → Keyboard Shortcuts**, where you can change them: click one and press the new keys.
 
 <details>
 <summary><b>All shortcuts</b></summary>

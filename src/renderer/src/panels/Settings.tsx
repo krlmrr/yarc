@@ -1,11 +1,11 @@
-import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import logo from '../../../../build/icon.svg'
-import { BINDINGS, bindingLabel } from '../../../shared/keymap'
+import { accelLabel, assign, BINDINGS, bindingLabel, canRemap, commandTitle, pressed, RESERVED, usedBy, whyNot, type CommandId, type Shortcuts as ShortcutsT } from '../../../shared/keymap'
 import { cleanMatch } from '../../../shared/link-routes'
 import { permissionLabel, siteName, type SitePermissionRow } from '../../../shared/permissions'
 import { SIDEBAR_WIDTH, type AppState, type Profile, type SearchEngine, type Settings as SettingsT, type SettingsSection as Section } from '../../../shared/types'
 import { SEARCH_ENGINES } from '../../../shared/url'
-import { activeSpace, dispatch, isMac } from '../api'
+import { activeSpace, cx, dispatch, isMac } from '../api'
 import { Icon, type IconName } from '../icons'
 import './panels.css'
 import './settings.css'
@@ -90,7 +90,7 @@ export function Settings({ state, section: initial = 'general', close }: { state
           {section === 'sites' && <SitePermissions state={state} />}
           {section === 'import' && <Import />}
           {section === 'extensions' && <Extensions state={state} />}
-          {section === 'shortcuts' && <Shortcuts />}
+          {section === 'shortcuts' && <Shortcuts shortcuts={state.settings.shortcuts} />}
           {section === 'about' && <About />}
         </div>
       </section>
@@ -496,31 +496,124 @@ function Extensions({ state }: { state: AppState }) {
 function keyCaps(label: string): string[] {
   if (!isMac) return label.split(/\+(?=.)/)
   const mods = /^[⌘⌃⌥⇧]*/.exec(label)![0]
-  return [...Array.from(mods), label.slice(mods.length)]
+  return [...Array.from(mods), label.slice(mods.length)].filter(Boolean)
 }
 
-function Shortcuts() {
-  const rows: { title: string; keys: string }[] = []
-  for (const b of BINDINGS) {
-    const m = /^(space|tab)(\d)$/.exec(b.id)
-    if (m && m[2] !== '1') continue
-    const keys = bindingLabel(b.id, isMac)
-    if (!keys) continue
-    if (m) rows.push({ title: m[1] === 'space' ? 'Switch to Space 1–9' : 'Go to Tab 1–9', keys: `${keys}–9` })
-    else rows.push({ title: b.title, keys })
+const Keys = ({ label }: { label: string }) => (
+  <span className="set-keys">
+    {keyCaps(label).map((k, i) => (
+      <kbd key={i}>{k}</kbd>
+    ))}
+  </span>
+)
+
+type Problem = { text: string; replace?: string }
+
+function Shortcuts({ shortcuts }: { shortcuts: ShortcutsT }) {
+  const [recording, setRecording] = useState<CommandId>()
+  const [held, setHeld] = useState({ accel: '', done: false })
+  const [problem, setProblem] = useState<Problem>()
+  const record = (id?: CommandId) => {
+    setRecording(id)
+    setHeld({ accel: '', done: false })
+    setProblem(undefined)
+    dispatch({ type: 'recordShortcut', on: id !== undefined })
   }
+  const save = (next: ShortcutsT) => {
+    patch({ shortcuts: next })
+    record(undefined)
+  }
+  useEffect(() => () => dispatch({ type: 'recordShortcut', on: false }), [])
+  useEffect(() => {
+    if (!recording) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const keys = pressed({ code: e.code, control: e.ctrlKey, meta: e.metaKey, alt: e.altKey, shift: e.shiftKey })
+      if (e.type === 'keyup') return setHeld((h) => (h.done ? h : keys))
+      if (e.key === 'Escape') return record(undefined)
+      setHeld(keys)
+      if (!keys.done) return
+      const other = usedBy(keys.accel, recording, isMac, shortcuts)
+      const why = whyNot(keys.accel, isMac)
+      if (why) setProblem({ text: why })
+      else if (other && !canRemap(other)) setProblem({ text: `${commandTitle(other)} uses it, and that can't be changed.` })
+      else if (other) setProblem({ text: `${commandTitle(other)} already uses it.`, replace: keys.accel })
+      else save(assign(shortcuts, recording, keys.accel, isMac))
+    }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('keyup', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('keyup', onKey, true)
+    }
+  }, [recording, shortcuts])
+
+  const reset = (id: CommandId) => patch({ shortcuts: Object.fromEntries(Object.entries(shortcuts).filter(([k]) => k !== id)) })
+  const fixed: { title: string; keys: string }[] = []
+  const bound: CommandId[] = []
+  const unbound: CommandId[] = []
+  for (const b of BINDINGS) {
+    const keys = bindingLabel(b.id, isMac, shortcuts)
+    const m = /^(space|tab)(\d)$/.exec(b.id)
+    if (canRemap(b.id)) (keys || shortcuts[b.id] ? bound : unbound).push(b.id)
+    else if (m?.[2] === '1') fixed.push({ title: m[1] === 'space' ? 'Switch to Space 1–9' : 'Go to Tab 1–9', keys: `${keys}–9` })
+    else if (keys && !m) fixed.push({ title: b.title, keys })
+  }
+  for (const [accel, title] of Object.entries(RESERVED[isMac ? 'mac' : 'other'])) fixed.push({ title, keys: accelLabel(accel, isMac) })
+
+  const row = (id: CommandId) => (
+    <div key={id} className={cx('set-row set-shortcut', recording === id && 'recording')}>
+      <span className="set-row-title">{commandTitle(id)}</span>
+      {shortcuts[id] && (
+        <button className="icon-btn set-shortcut-reset" title="Reset to default" onClick={() => reset(id)}>
+          <Icon name="reset" />
+        </button>
+      )}
+      <button className="set-shortcut-keys" title="Change shortcut" onClick={() => record(recording === id ? undefined : id)}>
+        {recording === id ? (
+          held.accel ? <Keys label={accelLabel(held.accel, isMac)} /> : <span className="set-shortcut-hint">Press keys…</span>
+        ) : bindingLabel(id, isMac, shortcuts) ? (
+          <Keys label={bindingLabel(id, isMac, shortcuts)} />
+        ) : (
+          <span className="set-shortcut-hint">None</span>
+        )}
+      </button>
+      {recording === id && problem && (
+        <div className="set-shortcut-problem">
+          {problem.text}
+          {problem.replace && (
+            <>
+              <button className="btn" onClick={() => save(assign(shortcuts, id, problem.replace!, isMac))}>
+                Replace
+              </button>
+              <button className="btn" onClick={() => record(undefined)}>
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
   return (
     <>
-      <p className="set-note">Shortcuts can't be changed yet.</p>
-      <Group>
-        {rows.map((r) => (
-          <div key={r.title} className="set-row set-shortcut">
+      <p className="set-note">
+        Click a shortcut, then press the keys you want. Esc cancels.
+        {Object.keys(shortcuts).length > 0 && (
+          <button className="btn set-shortcut-reset-all" onClick={() => save({})}>
+            Reset All
+          </button>
+        )}
+      </p>
+      <Group>{bound.map(row)}</Group>
+      <Group title="Without a shortcut">{unbound.map(row)}</Group>
+      <Group title="Fixed">
+        {fixed.map((r) => (
+          <div key={r.title} className="set-row set-shortcut fixed" title="Can't be changed">
             <span className="set-row-title">{r.title}</span>
-            <span className="set-keys">
-              {keyCaps(r.keys).map((k, i) => (
-                <kbd key={i}>{k}</kbd>
-              ))}
-            </span>
+            <Icon name="lock" size={13} />
+            <Keys label={r.keys} />
           </div>
         ))}
       </Group>

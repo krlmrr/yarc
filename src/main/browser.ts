@@ -23,7 +23,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Action, DropTarget } from '../shared/actions'
 import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
-import { commandForInput, type CommandId } from '../shared/keymap'
+import { commandForInput, validShortcuts, type CommandId } from '../shared/keymap'
 import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems } from '../shared/tree'
 import type {
   AppState,
@@ -174,6 +174,7 @@ export class Browser implements TabHost, FloatingHost {
   private hiddenSince = new Map<ID, number>()
   private mirror = new Mirror((wc, still) => this.sendStill(wc, still))
   private mru: ID[] = []
+  private recordingShortcut = false
   private closed: ClosedTab[] = []
   readonly downloads = new DownloadList({
     toast: (text) => this.toast(text),
@@ -964,6 +965,7 @@ export class Browser implements TabHost, FloatingHost {
       else mode = { kind: 'tour', step: this.tour }
     }
     if (current.kind === 'share-picker' && mode.kind !== 'share-picker') this.sharePicker.answer(current.id)
+    if (mode.kind !== 'settings') this.recordingShortcut = false
     if (mode.kind !== 'peek') this.dropPeek()
     if (current.kind === 'find' && mode.kind !== 'find') this.activeTab()?.wc.stopFindInPage('keepSelection')
     if (mode.kind !== 'sidebar') this.cur.sidebarReveal = false
@@ -1510,12 +1512,13 @@ export class Browser implements TabHost, FloatingHost {
       if (target) this.activate(target)
       return
     }
+    if (this.recordingShortcut) return
     if (input.type === 'keyDown' && input.key === 'Escape' && this.panelInFront()) {
       e.preventDefault()
       this.setOverlay({ kind: 'none' })
       return
     }
-    const cmd = commandForInput(input, isMac)
+    const cmd = commandForInput(input, isMac, this.state.settings.shortcuts)
     if (!cmd) return
     e.preventDefault()
     this.runCommand(cmd)
@@ -1807,6 +1810,9 @@ export class Browser implements TabHost, FloatingHost {
         if (a.patch.autoUpdate !== undefined) this.updater.sync()
         return this.relayout()
       }
+      case 'recordShortcut':
+        this.recordingShortcut = a.on === true
+        return
       case 'searchEngine':
         if (!Object.hasOwn(SEARCH_ENGINES, a.engine)) return
         this.state.settings.searchEngine = a.engine
@@ -2201,6 +2207,11 @@ function validSettingsPatch(current: Settings, patch: unknown): Partial<Settings
   for (const [key, value] of Object.entries(patch)) {
     if (!Object.hasOwn(current, key)) continue
     const now = (current as unknown as Record<string, unknown>)[key]
+    if (key === 'shortcuts') {
+      const shortcuts = validShortcuts(value, isMac)
+      if (shortcuts) clean[key] = shortcuts
+      continue
+    }
     if (key === 'linkRoutes') {
       const routes = validRoutes(value)
       if (routes) clean[key] = routes

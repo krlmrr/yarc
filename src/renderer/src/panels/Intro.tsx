@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import logo from '../../../../build/icon.svg'
-import { bindingLabel, type CommandId } from '../../../shared/keymap'
+import type { CommandId } from '../../../shared/keymap'
 import { spotlight, type Spotlight } from '../../../shared/spotlights'
 import { isFloating, nextStep, previousStep, TOUR_STEPS, tryEvent, type TourStep } from '../../../shared/tour'
 import { spaceItems } from '../../../shared/tree'
 import type { AppState, ImportChoice, ReleaseNotes, UpdateStatus } from '../../../shared/types'
-import { activeSpace, cx, dispatch, isMac } from '../api'
+import { activeSpace, cx, dispatch, isMac, shortcutLabel } from '../api'
 import { Icon } from '../icons'
 import './panels.css'
 import { SpotlightPicture } from './spotlight-pictures'
 
-const key = (id: CommandId) => <kbd className="kbd">{bindingLabel(id, isMac)}</kbd>
+const key = (id: CommandId) => <kbd className="kbd">{shortcutLabel(id)}</kbd>
 
 const go = (step: TourStep | undefined) => step && dispatch({ type: 'overlay', mode: { kind: 'tour', step } })
 

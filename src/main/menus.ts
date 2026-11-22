@@ -196,7 +196,7 @@ function appMenuGroups(browser: Browser) {
   const run = commandRunner(browser)
   // Shown, not registered: keymap.ts already handles every shortcut. The macOS menu bar shows none.
   const keys = (id: CommandId) =>
-    process.platform === 'darwin' ? {} : { accelerator: bindingLabel(id, false) || undefined, registerAccelerator: false }
+    process.platform === 'darwin' ? {} : { accelerator: bindingLabel(id, false, browser.state.settings.shortcuts) || undefined, registerAccelerator: false }
   const item = (id: CommandId, label = commandTitle(id), click = run(id)): MenuItemConstructorOptions => ({ label, click, ...keys(id) })
   const opensDialog = (id: CommandId) => item(id, `${commandTitle(id)}…`)
   const { state } = browser.updater.status

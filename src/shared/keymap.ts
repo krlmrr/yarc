@@ -141,6 +141,59 @@ export const BINDINGS: Binding[] = [
 
 export const commandTitle = (id: CommandId): string => BINDINGS.find((b) => b.id === id)?.title ?? id
 
+/** Per command, replaces the platform's default keys; [] leaves it without a shortcut. */
+export type Shortcuts = Partial<Record<CommandId, string[]>>
+
+// The numbered ones come as a family of nine; the switcher finishes on the modifier's keyup.
+const FIXED = /^(space|tab)\d$|^switcher|^installUpdate$|^focusPage$/
+export const canRemap = (id: CommandId): boolean => !FIXED.test(id)
+
+export const RESERVED: Record<'mac' | 'other', Record<string, string>> = {
+  mac: { 'Cmd+Q': 'Quit', 'Cmd+H': 'Hide YARC', 'Cmd+Alt+H': 'Hide Others', 'Cmd+M': 'Minimize', 'Cmd+Tab': 'Switch Apps', 'Cmd+Space': 'Spotlight', 'Cmd+C': 'Copy', 'Cmd+X': 'Cut', 'Cmd+V': 'Paste', 'Cmd+A': 'Select All', 'Cmd+Z': 'Undo', 'Cmd+Shift+Z': 'Redo' },
+  other: { 'Alt+F4': 'Close Window', 'Alt+Tab': 'Switch Apps', 'Ctrl+C': 'Copy', 'Ctrl+X': 'Cut', 'Ctrl+V': 'Paste', 'Ctrl+A': 'Select All', 'Ctrl+Z': 'Undo', 'Ctrl+Y': 'Redo' }
+}
+
+export function effectiveKeymap(mac: boolean, shortcuts: Shortcuts = {}): Map<CommandId, string[]> {
+  const claimed = new Set(Object.values(shortcuts).flat())
+  const free = (keys: string[]) => (claimed.size ? keys.filter((k) => !claimed.has(canon(k))) : keys)
+  return new Map(BINDINGS.map((b) => [b.id, shortcuts[b.id] ?? free(mac ? b.mac : b.other)]))
+}
+
+export function usedBy(accel: string, id: CommandId, mac: boolean, shortcuts: Shortcuts = {}): CommandId | undefined {
+  for (const [other, keys] of effectiveKeymap(mac, shortcuts)) if (other !== id && keys.some((k) => canon(k) === accel)) return other
+  return undefined
+}
+
+/** Gives `id` only `accel`, taking it from the command that had it. */
+export function assign(shortcuts: Shortcuts, id: CommandId, accel: string, mac: boolean): Shortcuts {
+  const next: Shortcuts = { ...shortcuts, [id]: [accel] }
+  const other = usedBy(accel, id, mac, shortcuts)
+  const theirs = other && shortcuts[other]
+  if (theirs) next[other] = theirs.filter((k) => k !== accel)
+  return next
+}
+
+export function whyNot(accel: string, mac: boolean): string | undefined {
+  const p = parse(accel)
+  const reserved = RESERVED[mac ? 'mac' : 'other'][accel]
+  if (reserved) return `${accelLabel(accel, mac)} is ${reserved}, which ${mac ? 'macOS' : 'the system'} keeps.`
+  if (!mac && p.meta) return 'The system keeps the Windows key for itself.'
+  if (/^F\d+$/.test(p.code) || (mac ? p.meta || p.control : p.control || p.alt)) return undefined
+  return `Add ${mac ? '⌘ or ⌃' : 'Ctrl or Alt'}, so the shortcut doesn't catch typing.`
+}
+
+export function validShortcuts(value: unknown, mac: boolean): Shortcuts | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const clean: Shortcuts = {}
+  for (const [id, keys] of Object.entries(value)) {
+    if (!BINDINGS.some((b) => b.id === id) || !canRemap(id as CommandId) || !Array.isArray(keys)) continue
+    clean[id as CommandId] = keys.filter((k) => typeof k === 'string' && ACCEL.test(k) && !whyNot(canon(k), mac)).map(canon)
+  }
+  return clean
+}
+
+const ACCEL = /^((Ctrl|Cmd|Alt|Shift)\+){0,4}[A-Za-z0-9]{1,20}$/
+
 export interface KeyInput {
   type: string
   code: string
@@ -150,6 +203,17 @@ export interface KeyInput {
   alt: boolean
   shift: boolean
 }
+
+type Keys = Pick<KeyInput, 'code' | 'control' | 'meta' | 'alt' | 'shift'>
+
+/** The accelerator for a key press, in canonical modifier order; not `done` while only modifiers are down. */
+export function pressed(k: Keys): { accel: string; done: boolean } {
+  const done = !/^(Shift|Control|Alt|Meta|OS)(Left|Right)?$/.test(k.code)
+  const token = /^Key([A-Z])$/.exec(k.code)?.[1] ?? /^Digit(\d)$/.exec(k.code)?.[1] ?? /^Arrow(\w+)$/.exec(k.code)?.[1] ?? k.code
+  return { accel: [k.control && 'Ctrl', k.meta && 'Cmd', k.alt && 'Alt', k.shift && 'Shift', done && token].filter(Boolean).join('+'), done }
+}
+
+const canon = (accel: string): string => pressed(parse(accel)).accel
 
 const CODE_ALIASES: Record<string, string> = {
   Left: 'ArrowLeft',
@@ -164,29 +228,21 @@ function tokenToCode(token: string): string {
   return CODE_ALIASES[token] ?? token
 }
 
-interface Parsed {
-  ctrl: boolean
-  meta: boolean
-  alt: boolean
-  shift: boolean
-  code: string
-}
-
-function parse(accel: string): Parsed {
+function parse(accel: string): Keys {
   const parts = accel.split('+')
   const code = tokenToCode(parts[parts.length - 1])
   const mods = new Set(parts.slice(0, -1))
-  return { ctrl: mods.has('Ctrl'), meta: mods.has('Cmd'), alt: mods.has('Alt'), shift: mods.has('Shift'), code }
+  return { control: mods.has('Ctrl'), meta: mods.has('Cmd'), alt: mods.has('Alt'), shift: mods.has('Shift'), code }
 }
 
-const cache = new Map<string, Parsed>()
+const cache = new Map<string, Keys>()
 
 export function matches(input: KeyInput, accel: string): boolean {
   let p = cache.get(accel)
   if (!p) cache.set(accel, (p = parse(accel)))
   return (
     input.code === p.code &&
-    input.control === p.ctrl &&
+    input.control === p.control &&
     input.meta === p.meta &&
     input.alt === p.alt &&
     input.shift === p.shift
@@ -200,25 +256,27 @@ export function isAltGrCharacter(input: KeyInput): boolean {
   return input.key.toUpperCase() !== base
 }
 
-export function commandForInput(input: KeyInput, mac: boolean): CommandId | undefined {
+export function commandForInput(input: KeyInput, mac: boolean, shortcuts: Shortcuts = {}): CommandId | undefined {
   if (input.type !== 'keyDown') return undefined
   if (!mac && isAltGrCharacter(input)) return undefined
-  for (const b of BINDINGS) {
-    for (const accel of mac ? b.mac : b.other) if (matches(input, accel)) return b.id
+  for (const [id, keys] of effectiveKeymap(mac, shortcuts)) {
+    for (const accel of keys) if (matches(input, accel)) return id
   }
   return undefined
 }
 
-const KEY_SYMBOLS: Record<string, string> = { Equal: '=', Minus: '-', Comma: ',', Left: '←', Right: '→', Up: '↑', Down: '↓', BracketLeft: '[', BracketRight: ']', Period: '.' }
+const KEY_SYMBOLS: Record<string, string> = { Equal: '=', Minus: '-', Comma: ',', Left: '←', Right: '→', Up: '↑', Down: '↓', BracketLeft: '[', BracketRight: ']', Period: '.', Slash: '/', Backslash: '\\', Semicolon: ';', Quote: "'", Backquote: '`' }
 const MAC_SYMBOLS: Record<string, string> = { ...KEY_SYMBOLS, Cmd: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧' }
 
-export function bindingLabel(id: CommandId, mac: boolean): string {
-  const b = BINDINGS.find((x) => x.id === id)
-  const accel = (mac ? b?.mac : b?.other)?.[0]
-  if (!accel) return ''
+export function accelLabel(accel: string, mac: boolean): string {
   const pretty = mac ? MAC_SYMBOLS : KEY_SYMBOLS
   return accel
     .split('+')
     .map((p) => pretty[p] ?? p.replace(/^Digit/, ''))
     .join(mac ? '' : '+')
+}
+
+export function bindingLabel(id: CommandId, mac: boolean, shortcuts: Shortcuts = {}): string {
+  const accel = effectiveKeymap(mac, shortcuts).get(id)?.[0]
+  return accel ? accelLabel(accel, mac) : ''
 }

@@ -291,6 +291,33 @@ test('Ctrl/Cmd+S toggles the sidebar and the page grows', async () => {
   await expect.poll(async () => (await state()).settings.sidebarVisible).toBe(true)
 })
 
+test('a shortcut changed in Settings runs its command, and its old keys reach the page instead', async () => {
+  await dispatch({ type: 'overlay', mode: { kind: 'settings', section: 'shortcuts' } })
+  const overlay = await pageWithUrl('overlay.html')
+  const keys = overlay.locator('.set-shortcut', { hasText: 'Toggle Sidebar' }).locator('.set-shortcut-keys')
+  await keys.click()
+  await expect(keys).toHaveText('Press keys…')
+  await app.evaluate((_e, m) => {
+    const wc = (globalThis as any).arcBrowser.window.overlay.webContents
+    wc.focus()
+    for (const type of ['keyDown', 'keyUp']) wc.sendInputEvent({ type, keyCode: 'Y', modifiers: m })
+  }, [mod, 'shift'])
+  await expect.poll(async () => (await state()).settings.shortcuts.toggleSidebar).toEqual([mod === 'meta' ? 'Cmd+Shift+Y' : 'Ctrl+Shift+Y'])
+  await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+
+  const inPage = (js: string) => app.evaluate((_e, code) => (globalThis as any).arcBrowser.activeTab().wc.executeJavaScript(code), js)
+  await inPage(`window.keys = []; addEventListener('keydown', (e) => keys.push(e.code))`)
+  await pressInActiveTab('S', [mod])
+  await expect.poll(() => inPage('keys.join()')).toBe('KeyS')
+  expect((await state()).settings.sidebarVisible).toBe(true)
+  await pressInActiveTab('Y', [mod, 'shift'])
+  await expect.poll(async () => (await state()).settings.sidebarVisible).toBe(false)
+  await pressInActiveTab('Y', [mod, 'shift'])
+  await expect.poll(async () => (await state()).settings.sidebarVisible).toBe(true)
+  expect(await inPage('keys.join()')).toBe('KeyS')
+  await dispatch({ type: 'settings', patch: { shortcuts: {} } })
+})
+
 test('dragging the sidebar edge resizes the sidebar and the page', async () => {
   const ui = app.windows().find((w) => w.url().endsWith('index.html'))!
   const drag = async (dx: number) => {
