@@ -9,7 +9,9 @@ import { guardUi, uiOrigin, uiPageUrl } from './ui-origin'
 export const PAD = 8
 
 const mac = process.platform === 'darwin'
-const TRAFFIC_LIGHTS = { x: 13, y: 16 }
+export const TRAFFIC_LIGHTS = { x: 13, y: 16 }
+/** Electron doesn't report the button group's width; measured on macOS. */
+export const TRAFFIC_LIGHTS_WIDTH = 54
 export const CAPTION_H = mac ? 0 : 32
 /** The UI's --text (styles.css). */
 export const captionSymbols = (dark: boolean): string => (dark ? '#f1eff6' : '#1d1b22')
@@ -122,10 +124,10 @@ export class MainWindow {
   }
 
   /** Electron shows them again at macOS's default spot, out of line with the sidebar's top bar. */
-  setTrafficLights(visible: boolean): void {
+  setTrafficLights(visible: boolean, at: Point = TRAFFIC_LIGHTS): void {
     if (!mac) return
     this.win.setWindowButtonVisibility(visible)
-    if (visible) this.win.setWindowButtonPosition(TRAFFIC_LIGHTS)
+    if (visible) this.win.setWindowButtonPosition(at)
   }
 
   setAppearance(appearance: 'light' | 'dark' | undefined): void {

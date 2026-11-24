@@ -193,6 +193,13 @@ input {
   padding-left: 70px;
 }
 
+/* A right sidebar has the traffic lights at the top bar's right end (trafficLightsAt, browser.ts); native fullscreen hides them. */
+.mac:not(.fullscreen) .sidebar.right .topbar,
+.mac.sidebar-right:not(.fullscreen) .sidebar.floating .topbar {
+  padding-left: 0;
+  padding-right: 70px;
+}
+
 /* Native fullscreen hides the traffic lights. */
 .mac.fullscreen .topbar {
   padding-left: 0;
