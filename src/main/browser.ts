@@ -11,6 +11,7 @@ import {
   type ContextMenuParams,
   type Event,
   type Input,
+  type Point,
   type IpcMainInvokeEvent,
   type Rectangle,
   type Result,
@@ -75,7 +76,7 @@ import { incognitoState, MAX_ARCHIVE, newId, SPACE_COLORS, Store } from './store
 import { LiveTab, type OpenDisposition, type TabHost } from './tab'
 import { handleUi } from './ui-origin'
 import { Updater } from './updater'
-import { MainWindow, PAD, type ViewSlot } from './window'
+import { MainWindow, PAD, TRAFFIC_LIGHTS, TRAFFIC_LIGHTS_WIDTH, type ViewSlot } from './window'
 import { applyView, captureView, cascade, inAnyView, newView, stateForView, viewFromState } from './window-state'
 
 const isMac = process.platform === 'darwin'
@@ -336,7 +337,7 @@ export class Browser implements TabHost, FloatingHost {
     this.use(w)
     const win = w.main.win
     if (view.maximized) win.maximize()
-    w.main.setTrafficLights(this.state.settings.sidebarVisible)
+    this.syncTrafficLights()
     const onInput = (e: Event, input: Input): void => {
       this.use(w)
       this.handleInput(e, input)
@@ -712,12 +713,27 @@ export class Browser implements TabHost, FloatingHost {
     this.changed()
   }
 
+  private syncTrafficLights(): void {
+    this.window.setTrafficLights(this.state.settings.sidebarVisible || this.window.overlayMode.kind === 'sidebar', this.trafficLightsAt())
+  }
+
+  /** A right sidebar's top bar keeps them at the window's top-right corner, mirroring the left layout. */
+  private trafficLightsAt(): Point | undefined {
+    if (!this.state.settings.sidebarRight) return undefined
+    const revealed = !this.state.settings.sidebarVisible && this.window.overlayMode.kind === 'sidebar'
+    return {
+      x: this.window.size().width - TRAFFIC_LIGHTS.x - TRAFFIC_LIGHTS_WIDTH,
+      y: TRAFFIC_LIGHTS.y + (revealed ? FLOATING_SIDEBAR_INSET : 0)
+    }
+  }
+
   layout(): void {
     const w = this.window
     if (!w || w.win.isDestroyed()) return
     const s = this.state.settings
     const fs = this.cur.fullscreenTab
     const content = w.contentRect(s.sidebarVisible, s.sidebarWidth, s.sidebarRight, !!fs)
+    this.syncTrafficLights()
     w.setAppearance(this.space.appearance)
     const views: AppState['layout']['views'] = []
     let splitId: ID | undefined
@@ -992,7 +1008,7 @@ export class Browser implements TabHost, FloatingHost {
     if (mode.kind !== 'space-editor' && this.colorPreview?.w === this.cur) this.colorPreview = undefined
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, this.overlayRect(mode))
-    if (!this.state.settings.sidebarVisible) this.window.setTrafficLights(mode.kind === 'sidebar')
+    this.syncTrafficLights()
     if (mode.kind === 'none' && refocus) this.activeTab()?.wc.focus()
     if (mode.kind === 'command') this.tourEvent('newTab')
     this.syncPrompts()
@@ -1930,7 +1946,6 @@ export class Browser implements TabHost, FloatingHost {
     s.sidebarVisible = !s.sidebarVisible
     this.cur.sidebarReveal = false
     if (this.window.overlayMode.kind === 'sidebar') this.window.setOverlay({ kind: 'none' }, undefined)
-    this.window.setTrafficLights(s.sidebarVisible)
     this.relayout()
     if (this.tour && this.window.overlayMode.kind === 'none') this.setOverlay({ kind: 'tour', step: this.tour }, false)
     this.tourEvent('toggleSidebar')
@@ -1940,7 +1955,6 @@ export class Browser implements TabHost, FloatingHost {
     Object.assign(this.state.settings, validSettingsPatch(this.state.settings, patch, isMac))
     this.adblock.sync(this.state.settings)
     if (patch.theme) nativeTheme.themeSource = patch.theme
-    if (patch.sidebarVisible !== undefined) this.window.setTrafficLights(patch.sidebarVisible)
     if (patch.autoUpdate !== undefined) this.updater.sync()
     this.relayout()
   }

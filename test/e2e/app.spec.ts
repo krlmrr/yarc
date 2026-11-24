@@ -178,6 +178,20 @@ test('pages start below the native caption buttons on Windows and Linux', async 
   }
 })
 
+test('the traffic lights mirror to the top-right corner with a right sidebar on macOS, docked and revealed', async () => {
+  if (process.platform !== 'darwin') return
+  const lights = () => app.evaluate(() => (globalThis as any).arcBrowser.window.win.getWindowButtonPosition())
+  const right = () => app.evaluate(() => (globalThis as any).arcBrowser.window.size().width - 13 - 54)
+  await dispatch({ type: 'settings', patch: { sidebarRight: true } })
+  expect(await lights()).toEqual({ x: await right(), y: 16 })
+  await dispatch({ type: 'settings', patch: { sidebarVisible: false } })
+  await dispatch({ type: 'overlay', mode: { kind: 'sidebar' } })
+  expect(await lights()).toEqual({ x: await right(), y: 20 })
+  await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+  await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })
+  expect(await lights()).toEqual({ x: 13, y: 16 })
+})
+
 test('the menu button opens Settings on Windows and Linux; macOS has the menu bar instead', async () => {
   const ui = await pageWithUrl('index.html')
   const button = ui.locator('.topbar button[title="Menu"]')
