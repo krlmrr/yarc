@@ -20,6 +20,7 @@ const api: ArcApi = {
   onLittle: (cb) => listen(IPC.little, cb),
   onEdit: (cb) => listen(IPC.edit, cb),
   onStill: (cb) => listen(IPC.still, cb),
+  onSwipe: (cb) => listen(IPC.swipe, cb),
   dispatch: (action) => ipcRenderer.invoke(IPC.action, action),
   search: (query) => ipcRenderer.invoke(IPC.search, query),
   suggest: (query) => ipcRenderer.invoke(IPC.suggest, query),
@@ -41,7 +42,8 @@ const api: ArcApi = {
   canvasExport: (png, to) => ipcRenderer.invoke(IPC.canvasExport, png, to),
   canvasLive: (cards) => ipcRenderer.send(IPC.canvasLive, cards),
   onCanvasShown: (cb) => listen(IPC.canvasShown, cb),
-  capturePick: (x, y, depth) => ipcRenderer.invoke(IPC.capturePick, x, y, depth)
+  capturePick: (x, y, depth) => ipcRenderer.invoke(IPC.capturePick, x, y, depth),
+  dragDownload: (id) => ipcRenderer.send(IPC.downloadDrag, id)
 }
 
 // Never for a web page that ends up in a UI view somehow (main refuses its IPC too: ui-origin.ts).

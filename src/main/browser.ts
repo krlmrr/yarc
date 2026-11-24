@@ -12,7 +12,6 @@ import {
   type Event,
   type Input,
   type Point,
-  type IpcMainInvokeEvent,
   type Rectangle,
   type Result,
   type View,
@@ -72,9 +71,10 @@ import { Profiles, type ProfileRuntime } from './profiles'
 import { PROMPT_WIDTH, PromptView, type PromptAnchor } from './prompt-view'
 import { search, suggest } from './search'
 import { SharePicker } from './share-picker'
+import { setSwipeStage, type SwipeStep } from './swipe-nav'
 import { incognitoState, MAX_ARCHIVE, newId, SPACE_COLORS, Store } from './store'
 import { LiveTab, type OpenDisposition, type TabHost } from './tab'
-import { handleUi } from './ui-origin'
+import { handleUi, onUi } from './ui-origin'
 import { Updater } from './updater'
 import { MainWindow, PAD, TRAFFIC_LIGHTS, TRAFFIC_LIGHTS_WIDTH, type ViewSlot } from './window'
 import { applyView, captureView, cascade, inAnyView, newView, stateForView, viewFromState } from './window-state'
@@ -91,6 +91,7 @@ const SIDEBAR_REVEAL_GRACE_PX = 32
 const SIDEBAR_REVEAL_HIDE_DELAY_MS = 300
 // Chromium still reports a tab audible for a moment after its media paused; only sound that lasts gets a card.
 const AUDIBLE_SETTLE_MS = 500
+const SWIPE_SETTLE_MS = 200
 // Sidebar geometry, kept in step with styles.css.
 const SIDEBAR_PAD = 8
 const FLOATING_SIDEBAR_INSET = 4
@@ -137,6 +138,16 @@ const COMMAND_ACTIONS: Partial<Record<CommandId, Action>> = {
   extensions: { type: 'extensionsStore' }
 }
 
+interface Swipe {
+  tab: LiveTab
+  w: WindowSession
+  base: Rectangle
+  step: SwipeStep
+  offset: number
+  progress: number
+  timer?: ReturnType<typeof setTimeout>
+}
+
 interface ClosedTab {
   url: string
   title: string
@@ -178,6 +189,7 @@ export class Browser implements TabHost, FloatingHost {
   private readonly liveFolders = new LiveFolders(this)
   private media: MediaState = mediaState.emptyMedia()
   /** The space editor's unsaved colors; no `spaceId` is a new space, shown on its window's current one. */
+  private swipe: Swipe | undefined
   private colorPreview: { w: WindowSession; spaceId?: ID; color: string; color2?: string } | undefined
   private readonly floating = new FloatingPlayer(this)
   private onScreen = new Set<ID>()
@@ -370,6 +382,15 @@ export class Browser implements TabHost, FloatingHost {
       })
     )
     win.on('move', () => this.saveBounds(w))
+    const stepHistory = (step: 'back' | 'forward') => this.inWin(w, () => void this.dispatch({ type: step }))
+    win.on('swipe', (_e, direction) => {
+      if (direction === 'left') stepHistory('back')
+      if (direction === 'right') stepHistory('forward')
+    })
+    win.on('app-command', (_e, command) => {
+      if (command === 'browser-backward') stepHistory('back')
+      if (command === 'browser-forward') stepHistory('forward')
+    })
     for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) {
       win.on(ev as 'maximize', () =>
         this.inWin(w, () => {
@@ -1100,6 +1121,59 @@ export class Browser implements TabHost, FloatingHost {
     })
   }
 
+  /** Slides a tab's page `offset` toward where the swipe goes, uncovering the arrow behind it; false if this browser doesn't show it. */
+  showSwipe(page: WebContents, step: SwipeStep, offset: number, progress: number): boolean {
+    const s = this.swipe?.tab.wc === page ? this.swipe : this.startSwipe(page)
+    if (!s) return false
+    clearTimeout(s.timer)
+    s.step = step
+    this.slide(s, offset, progress)
+    return true
+  }
+
+  hideSwipe(page: WebContents): void {
+    const s = this.swipe
+    if (s?.tab.wc !== page) return
+    clearTimeout(s.timer)
+    const { offset, progress } = s
+    const started = Date.now()
+    const settle = () => {
+      const left = (1 - Math.min(1, (Date.now() - started) / SWIPE_SETTLE_MS)) ** 2
+      if (left === 0 || s.tab.destroyed || !s.w.open) return this.endSwipe()
+      this.slide(s, offset * left, progress * left)
+      s.timer = setTimeout(settle, 16)
+    }
+    settle()
+  }
+
+  private startSwipe(page: WebContents): Swipe | undefined {
+    const tab = [...this.live.values()].find((t) => t.wc === page && !t.destroyed)
+    const w = tab && this.wins.find((x) => x.open && x.main.isShown(tab.view))
+    if (!tab || !w) return undefined
+    this.endSwipe()
+    this.swipe = { tab, w, base: tab.view.getBounds(), step: 'back', offset: 0, progress: 0 }
+    return this.swipe
+  }
+
+  private slide(s: Swipe, offset: number, progress: number): void {
+    s.offset = offset
+    s.progress = progress
+    const { base } = s
+    const back = s.step === 'back'
+    s.tab.view.setBounds({ ...base, x: base.x + Math.round(back ? offset : -offset) })
+    s.w.main.ui.send(IPC.swipe, { rect: base, offset, step: s.step, progress })
+  }
+
+  private endSwipe(): void {
+    const s = this.swipe
+    if (!s) return
+    clearTimeout(s.timer)
+    this.swipe = undefined
+    if (!s.w.open) return
+    s.w.main.ui.send(IPC.swipe, null)
+    this.inWin(s.w, () => this.layout())
+  }
+
   openPeek(profileId: ID, url: string): void {
     this.dropPeek()
     this.cur.peek = new Peek(this, this.profiles.get(profileId), url)
@@ -1166,6 +1240,12 @@ export class Browser implements TabHost, FloatingHost {
     if (!this.state.settings.peekPinnedLinks || !/^https?:/i.test(url)) return false
     const found = findItem(this.state, tab.itemId)
     if (!found || found.loc.kind === 'today' || sameSite(tab.wc.getURL(), url)) return false
+    this.openPeek(tab.profileId, url)
+    return true
+  }
+
+  peekLink(tab: LiveTab, url: string): boolean {
+    if (!/^https?:/i.test(url) || tab.host !== this) return false
     this.openPeek(tab.profileId, url)
     return true
   }
@@ -2180,7 +2260,7 @@ export class Browser implements TabHost, FloatingHost {
   }
 
   private registerIpc(): void {
-    const of = (e: IpcMainInvokeEvent): Browser => {
+    const of = (e: { sender: WebContents }): Browser => {
       for (const b of Browser.all) {
         const w = b.winFor(e.sender)
         if (w) {
@@ -2192,6 +2272,10 @@ export class Browser implements TabHost, FloatingHost {
       throw new Error('IPC from a view no window owns')
     }
     handleUi(IPC.action, (e, action: Action) => of(e).dispatch(action))
+    setSwipeStage({
+      show: (page, step, offset, progress) => [...Browser.all].some((b) => b.showSwipe(page, step, offset, progress)),
+      hide: (page) => Browser.all.forEach((b) => b.hideSwipe(page))
+    })
     handleUi(IPC.getState, (e) => of(e).snapshot())
     handleUi(IPC.getOverlay, (e) => of(e).window.overlayMode)
     handleUi(IPC.search, (e, q: string) => search(of(e), String(q)))
@@ -2205,6 +2289,7 @@ export class Browser implements TabHost, FloatingHost {
       return b.profiles.get(b.space.profileId).history.deleteUrl(String(url))
     })
     handleUi(IPC.focus, (e) => e.sender.focus())
+    onUi(IPC.downloadDrag, (e, id: string) => of(e).downloads.drag(String(id), e.sender))
     handleUi(IPC.capturePick, (e, x: number, y: number, depth: number) => {
       const b = of(e)
       const tab = b.activeTab()

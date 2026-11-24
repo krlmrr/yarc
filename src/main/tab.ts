@@ -28,6 +28,8 @@ export interface TabHost {
   showContextMenu(tab: LiveTab, params: ContextMenuParams): void
   /** A link the user clicked is about to replace the page; return true to open it elsewhere instead. */
   interceptLink?(tab: LiveTab, url: string): boolean
+  /** A link the user shift-clicked; return true if it opened in Peek instead of a new window. */
+  peekLink?(tab: LiveTab, url: string): boolean
   onPopupBlocked?(tab: LiveTab, url: string): void
 }
 
@@ -220,6 +222,9 @@ export class LiveTab {
         void openExternalLink(wc, url, this.userActivated)
         return { action: 'deny' }
       }
+      // Input events from a real mouse carry no modifiers; a featureless new window right after a click is a shift-click.
+      const shiftClicked = disposition === 'new-window' && !features && Date.now() - this.lastClick < LINK_CLICK_MS
+      if (shiftClicked && this.host.peekLink?.(this, url)) return { action: 'deny' }
       if (!this.userActivated) {
         if (Date.now() - this.lastUnrequestedPopup < UNREQUESTED_POPUP_MS) {
           this.host.onPopupBlocked?.(this, url)
