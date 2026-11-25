@@ -29,6 +29,7 @@ const savedItems = (canvas: OpenCanvas): Promise<BoardItem[]> => app.evaluate((_
 const savedTexts = async (canvas: OpenCanvas) => (await savedItems(canvas)).flatMap((item) => (item.kind === 'text' ? [item.text] : []))
 const savedImageFiles = (canvas: OpenCanvas): Promise<number> =>
   app.evaluate((_electron, id) => Object.keys((globalThis as any).arcBrowser.canvases.files(id).readImages()).length, canvas.id)
+const savedAppearance = (canvas: OpenCanvas): Promise<string | undefined> => app.evaluate((_electron, id) => (globalThis as any).arcBrowser.canvases.files(id).readScene()?.appearance, canvas.id)
 const reopen = (canvas: OpenCanvas) => app.evaluate((_electron, id) => (globalThis as any).arcBrowser.canvases.page(id).wc.reload(), canvas.id)
 
 const texts = (board: Page) => board.locator('.item.text')
@@ -42,6 +43,16 @@ async function startTyping(board: Page, text: string): Promise<void> {
   await expect(textBeingTyped(board)).toBeFocused()
   await board.keyboard.type(text)
 }
+
+/** Places a note with the note tool, in the empty part of the board left of the title. */
+async function startNote(board: Page, text: string): Promise<void> {
+  await board.keyboard.press('n')
+  await board.mouse.click(120, 200)
+  await expect(textBeingTyped(board)).toBeFocused()
+  await board.keyboard.type(text)
+}
+
+const savedNote = async (canvas: OpenCanvas) => (await savedItems(canvas)).find((item) => item.kind === 'text' && item.card)
 
 /** What a real paste hands the board, without touching the machine's clipboard. */
 const paste = (board: Page, type: string, content: string) =>
@@ -128,6 +139,89 @@ test.describe('writing on a canvas', () => {
   })
 })
 
+test.describe('notes on a canvas', () => {
+  const NOTE_WIDTH = 280
+  const PASTED_WIDTH = 420
+
+  test('the note tool places a card that wraps what is typed in it', async () => {
+    const canvas = await openCanvas('Notes')
+    await startNote(canvas.board, 'one line')
+    const oneLine = await boxOf(textBeingTyped(canvas.board))
+    await canvas.board.keyboard.type(' that goes on for long enough to need a second and a third row on a card this narrow')
+    await expect.poll(async () => (await boxOf(textBeingTyped(canvas.board))).height).toBeGreaterThan(oneLine.height)
+    expect((await boxOf(textBeingTyped(canvas.board))).width).toBe(NOTE_WIDTH)
+    await expect.poll(() => savedNote(canvas)).toMatchObject({ card: true, wrapWidth: NOTE_WIDTH })
+  })
+
+  test('dragging with the text tool makes a text as wide as the drag', async () => {
+    const canvas = await openCanvas('Drag')
+    await canvas.board.keyboard.press('t')
+    await canvas.board.mouse.move(120, 200)
+    await canvas.board.mouse.down()
+    await canvas.board.mouse.move(420, 260, { steps: 5 })
+    await canvas.board.mouse.up()
+    await expect(textBeingTyped(canvas.board)).toBeFocused()
+    expect((await boxOf(textBeingTyped(canvas.board))).width).toBe(300)
+  })
+
+  test('a pasted paragraph is wrapped, not one line running off the board', async () => {
+    const canvas = await openCanvas('Paragraph')
+    await paste(canvas.board, 'text/plain', LONGER_THAN_THE_WINDOW)
+    await expect.poll(async () => (await boxOf(texts(canvas.board).nth(1))).width).toBe(PASTED_WIDTH)
+  })
+
+  test('dragging a text’s left handle makes it narrower and taller, and its right side stays', async () => {
+    const canvas = await openCanvas('Handle')
+    await paste(canvas.board, 'text/plain', LONGER_THAN_THE_WINDOW)
+    const paragraph = texts(canvas.board).nth(1)
+    await expect.poll(async () => (await boxOf(paragraph)).width).toBe(PASTED_WIDTH)
+    const before = await boxOf(paragraph)
+    const handle = await boxOf(canvas.board.locator('.handle-w'))
+    const grabbedAt = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }
+    await canvas.board.mouse.move(grabbedAt.x, grabbedAt.y)
+    await canvas.board.mouse.down()
+    await canvas.board.mouse.move(grabbedAt.x + 200, grabbedAt.y, { steps: 5 })
+    await canvas.board.mouse.up()
+    await expect.poll(async () => (await boxOf(paragraph)).width).toBe(PASTED_WIDTH - 200)
+    const after = await boxOf(paragraph)
+    expect(after.height).toBeGreaterThan(before.height)
+    expect(after.x + after.width).toBeCloseTo(before.x + before.width)
+  })
+
+  test('a click on a checkbox ticks it without starting to type, and undo unticks it', async () => {
+    const canvas = await openCanvas('Checklist')
+    await startNote(canvas.board, '[ ] chairs')
+    await canvas.board.keyboard.press('Escape')
+    await canvas.board.locator('.item.text .box').click()
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Checklist', '[x] chairs'])
+    await expect(textBeingTyped(canvas.board)).toHaveCount(0)
+    await canvas.board.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Checklist', '[ ] chairs'])
+  })
+
+  test('Enter goes on with a list, and Enter on an empty list line ends it', async () => {
+    const canvas = await openCanvas('List')
+    await startNote(canvas.board, '- milk')
+    await canvas.board.keyboard.press('Enter')
+    await canvas.board.keyboard.type('eggs')
+    await canvas.board.keyboard.press('Enter')
+    await canvas.board.keyboard.press('Enter')
+    await canvas.board.keyboard.type('not on the list')
+    await expect.poll(() => savedTexts(canvas)).toEqual(['List', '- milk\n- eggs\nnot on the list'])
+  })
+
+  test('Tab puts a list line one level deeper and Shift+Tab takes it back, with the caret where it was', async () => {
+    const canvas = await openCanvas('Levels')
+    await startNote(canvas.board, '- oat')
+    await canvas.board.keyboard.press('Tab')
+    await canvas.board.keyboard.type(' milk')
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Levels', '\t- oat milk'])
+    await canvas.board.keyboard.press('Shift+Tab')
+    await canvas.board.keyboard.type('!')
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Levels', '- oat milk!'])
+  })
+})
+
 test.describe('pasting onto a canvas', () => {
   test('a second pasted text lands beside the first, not on top of it', async () => {
     const canvas = await openCanvas('Pastes')
@@ -189,6 +283,19 @@ test.describe('the bars around the board', () => {
     expect(gapAboveTitle).toBeGreaterThan(0)
     expect(gapAboveTitle).toBeLessThan(40)
     await expect(canvas.board.locator('.stylebar .size')).toHaveText(['Body', 'Heading', 'Title'])
+  })
+
+  test('the light/dark button gives the board the other look, and the canvas keeps it when opened again', async () => {
+    const canvas = await openCanvas('Night board')
+    const page = canvas.board.locator('.canvas-page')
+    const wasDark = await page.evaluate((element) => element.classList.contains('dark'))
+    const otherLook = wasDark ? 'light' : 'dark'
+    await canvas.board.locator('.appearance-button').click()
+    await expect(page).toHaveClass(wasDark ? 'canvas-page' : 'canvas-page dark')
+    await expect.poll(() => savedAppearance(canvas)).toBe(otherLook)
+    await page.evaluate((element) => element.setAttribute('data-from-before-reopening', ''))
+    await reopen(canvas)
+    await expect(canvas.board.locator('.canvas-page:not([data-from-before-reopening])')).toHaveClass(wasDark ? 'canvas-page' : 'canvas-page dark')
   })
 
   test('Find in Page opens nothing on a canvas, which has no page to search', async () => {

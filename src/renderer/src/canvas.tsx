@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { boundsOf, IMAGE_TYPES, intersects, resized, smoothPath, snapMove, withBox, type BoardItem, type Box, type CanvasLoad, type DrawItem, type Guide, type Handle } from '../../shared/canvas'
+import { MIN_WRAP_WIDTH, NOTE_WIDTH, rewrapped, toggledCheckbox } from '../../shared/canvas-notes'
 import { arc, cx, isMac } from './api'
 import { boardActions, useStyle } from './canvas-actions'
 import { StyleBar, Toolbar, TOOLS, ZoomBar } from './canvas-bars'
@@ -12,7 +13,7 @@ import { DRAW_STROKE, ItemView, paint } from './canvas-item'
 import { Menu, menuEntries } from './canvas-menu'
 import { SelectionOverlay } from './canvas-overlay'
 import { useTextEditing } from './canvas-text-editing'
-import { gridBackground, toScreen, toWorld, type Point, type View } from './canvas-view'
+import { boxBetween, gridBackground, toScreen, toWorld, type Point, type View } from './canvas-view'
 import { Icon } from './icons'
 import './canvas.css'
 
@@ -24,10 +25,13 @@ type Gesture =
   | { kind: 'resize'; start: Point; before: BoardItem[]; id: string; handle: Handle }
   | { kind: 'marquee'; start: Point; keep: string[] }
   | { kind: 'create'; start: Point; before: BoardItem[]; id: string }
+  | { kind: 'textbox'; start: Point; startOnScreen: Point; left: number; width: number }
   | { kind: 'draw'; points: number[] }
 
 function BoardView({ loaded }: { loaded: CanvasLoad }) {
-  const dark = useDarkAppearance()
+  const spaceIsDark = useDarkAppearance()
+  const [appearance, setAppearance] = useState(loaded.scene?.appearance)
+  const dark = appearance ? appearance === 'dark' : spaceIsDark
   const boardRef = useRef<HTMLDivElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -53,7 +57,7 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
   const lastDown = useRef<{ at: number; id: string | undefined }>({ at: 0, id: undefined })
   const spaceDown = useRef(false)
 
-  useSceneSave(() => ({ items: itemsRef.current.filter((item) => !isBlankText(item)), view: viewRef.current, snapping: snappingRef.current }), board.files, Object.keys(loaded.files))
+  useSceneSave(() => ({ items: itemsRef.current.filter((item) => !isBlankText(item)), view: viewRef.current, snapping: snappingRef.current, appearance }), board.files, Object.keys(loaded.files))
   useLiveCards(boardRef, items, view, !!menu)
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -75,10 +79,14 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const hit = target.closest('[data-id]')?.getAttribute('data-id') ?? undefined
-    if (tool === 'text') {
-      setTool('select')
+    if (tool === 'text' || tool === 'note') {
       const textUnderPointer = itemsRef.current.find((item) => item.id === hit && item.kind === 'text')
-      return textUnderPointer ? editText(textUnderPointer.id) : startText(worldPoint)
+      if (tool === 'text' && !textUnderPointer) {
+        gestureRef.current = { kind: 'textbox', start: worldPoint, startOnScreen: screenPoint, left: worldPoint.x, width: 0 }
+        return
+      }
+      setTool('select')
+      return textUnderPointer ? editText(textUnderPointer.id) : startText(worldPoint, { card: true, wrapWidth: NOTE_WIDTH })
     }
     if (tool === 'rect' || tool === 'ellipse' || tool === 'arrow') {
       const id = newId()
@@ -98,6 +106,13 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
     if (handle && selectedRef.current.length === 1) {
       gestureRef.current = { kind: 'resize', start: worldPoint, before: itemsRef.current, id: selectedRef.current[0], handle }
       return
+    }
+    const linkUnderPointer = target.closest('[data-url]')?.getAttribute('data-url')
+    if (linkUnderPointer && (isMac ? event.metaKey : event.ctrlKey)) return void arc.canvasOpenUrl(linkUnderPointer)
+    const checkboxLine = target.closest('[data-check]')?.getAttribute('data-check')
+    if (hit && checkboxLine) {
+      lastDown.current = { at: 0, id: undefined }
+      return change(itemsRef.current.map((item) => (item.id === hit && item.kind === 'text' ? { ...item, text: toggledCheckbox(item.text, Number(checkboxLine)) } : item)))
     }
     const now = Date.now()
     const doubleClick = now - lastDown.current.at < 350 && lastDown.current.id === hit
@@ -145,18 +160,25 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
     if (gesture.kind === 'resize') {
       const resizing = gesture.before.find((item) => item.id === gesture.id)
       if (!resizing) return
-      const newBox = resized(resizing, gesture.handle, worldPoint.x - gesture.start.x, worldPoint.y - gesture.start.y, keepsShape(resizing) !== event.shiftKey)
-      return setItems(gesture.before.map((item) => (item.id === gesture.id ? withBox(item, newBox) : item)))
+      const dx = worldPoint.x - gesture.start.x
+      const dy = worldPoint.y - gesture.start.y
+      const changed = resizing.kind === 'text' ? rewrapped(resizing, gesture.handle, dx) : withBox(resizing, resized(resizing, gesture.handle, dx, dy, keepsShape(resizing) !== event.shiftKey))
+      return setItems(gesture.before.map((item) => (item.id === gesture.id ? changed : item)))
+    }
+    if (gesture.kind === 'textbox') {
+      gesture.left = Math.min(gesture.start.x, worldPoint.x)
+      gesture.width = Math.abs(worldPoint.x - gesture.start.x)
+      return setMarquee(boxBetween(gesture.startOnScreen, screenPoint))
     }
     if (gesture.kind === 'marquee') {
-      const box = { x: Math.min(gesture.start.x, screenPoint.x), y: Math.min(gesture.start.y, screenPoint.y), width: Math.abs(screenPoint.x - gesture.start.x), height: Math.abs(screenPoint.y - gesture.start.y) }
+      const box = boxBetween(gesture.start, screenPoint)
       setMarquee(box)
       const worldBox = { x: (box.x - currentView.x) / currentView.zoom, y: (box.y - currentView.y) / currentView.zoom, width: box.width / currentView.zoom, height: box.height / currentView.zoom }
       const inside = itemsRef.current.filter((item) => intersects(worldBox, item)).map((item) => item.id)
       return setSelected([...new Set([...gesture.keep, ...inside])])
     }
     if (gesture.kind === 'create') {
-      const box = { x: Math.min(gesture.start.x, worldPoint.x), y: Math.min(gesture.start.y, worldPoint.y), width: Math.abs(worldPoint.x - gesture.start.x), height: Math.abs(worldPoint.y - gesture.start.y) }
+      const box = boxBetween(gesture.start, worldPoint)
       if (event.shiftKey && tool !== 'arrow') box.width = box.height = Math.max(box.width, box.height)
       return setItems(
         itemsRef.current.map((item) =>
@@ -186,6 +208,12 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
       return
     }
     if (gesture.kind === 'marquee') return setMarquee(undefined)
+    if (gesture.kind === 'textbox') {
+      setMarquee(undefined)
+      setTool('select')
+      const draggedWide = gesture.width >= MIN_WRAP_WIDTH
+      return draggedWide ? startText({ x: gesture.left, y: gesture.start.y }, { wrapWidth: gesture.width }) : startText(gesture.start)
+    }
     if (gesture.kind === 'create') {
       const created = itemsRef.current.find((item) => item.id === gesture.id)
       if (created && created.width + created.height < 6) {
@@ -297,7 +325,7 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
   const hintAt = title ? { left: (title.x + title.width / 2) * view.zoom + view.x, top: (title.y + title.height) * view.zoom + view.y + 14 } : undefined
 
   return (
-    <div className="canvas-page">
+    <div className={cx('canvas-page', dark && 'dark')}>
       <div
         ref={boardRef}
         className={cx('board', `tool-${tool}`, panning && 'panning')}
@@ -357,6 +385,14 @@ function BoardView({ loaded }: { loaded: CanvasLoad }) {
       <StyleBar tool={tool} chosen={chosenItems} selectionOnScreen={boundsOf(chosenItems.map((item) => toScreen(item, view)))} style={style} dark={dark} onRestyle={restyle} />
       <ZoomBar zoom={view.zoom} onZoomBy={zoomBy} onActualSize={() => zoomAt(middle(), 1)} />
 
+      <button
+        className="board-menu-button appearance-button"
+        title={dark ? 'Light board' : 'Dark board'}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setAppearance(dark ? 'light' : 'dark')}
+      >
+        <Icon name={dark ? 'sun' : 'moon'} size={18} />
+      </button>
       <button
         className="board-menu-button"
         title="More"
