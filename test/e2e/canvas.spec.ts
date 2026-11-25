@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { BoardItem } from '../../src/shared/canvas'
-import { app, overlayKind, pageWithUrl, useApp } from './app'
+import { app, base, captureNextMenu, dispatch, overlayKind, pageWithUrl, useApp } from './app'
 
 useApp()
 
@@ -294,6 +294,41 @@ test.describe('the bars around the board', () => {
     await expect(canvas.board.locator('.stylebar .size')).toHaveText(['Body', 'Heading', 'Title'])
   })
 
+  test('the list and checklist buttons mark every line of the selected note, and one undo takes it back', async () => {
+    const canvas = await openCanvas('Marks')
+    await startNote(canvas.board, 'milk')
+    await canvas.board.keyboard.press('Enter')
+    await canvas.board.keyboard.type('eggs')
+    await canvas.board.keyboard.press('Escape')
+    await texts(canvas.board).nth(1).click()
+    await canvas.board.getByTitle('Bulleted list').click()
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Marks', '- milk\n- eggs'])
+    await canvas.board.getByTitle('Checklist').click()
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Marks', '[ ] milk\n[ ] eggs'])
+    await canvas.board.getByTitle('Checklist').click()
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Marks', 'milk\neggs'])
+    await canvas.board.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Marks', '[ ] milk\n[ ] eggs'])
+  })
+
+  test('the link button asks for an address in the bar and adds it as a last line, and turns down what is no address', async () => {
+    const canvas = await openCanvas('Links')
+    await startNote(canvas.board, 'read this')
+    await canvas.board.keyboard.press('Escape')
+    await texts(canvas.board).nth(1).click()
+    await canvas.board.getByTitle('Add a link').click()
+    const field = canvas.board.locator('.stylebar .link-field')
+    await expect(field).toBeFocused()
+    await field.fill('two words')
+    await field.press('Enter')
+    await expect(field).toHaveClass(/invalid/)
+    await field.fill('example.com/docs')
+    await field.press('Enter')
+    await expect(field).toHaveCount(0)
+    await expect.poll(() => savedTexts(canvas)).toEqual(['Links', 'read this\nhttps://example.com/docs'])
+    await expect(canvas.board.locator('.item.text .link')).toHaveText('https://example.com/docs')
+  })
+
   test('the light/dark button gives the board the other look, and the canvas keeps it when opened again', async () => {
     const canvas = await openCanvas('Night board')
     const page = canvas.board.locator('.canvas-page')
@@ -357,5 +392,61 @@ test.describe('the bars around the board', () => {
     await board.locator('.canvas-find input').fill('zebra')
     await expect(board.locator('.canvas-find .count')).toHaveText('0/0')
     await expect(board.locator('.item.found-current')).toHaveCount(0)
+  })
+})
+
+test.describe('quotes from a page', () => {
+  /** Selects the paragraph of the test page and right-clicks it: the menu a person would see. */
+  async function rightClickSelection(pageName: string): Promise<Page> {
+    await dispatch({ type: 'open', url: `${base}/${pageName}`, where: 'tab' })
+    const page = await pageWithUrl(`/${pageName}`)
+    await page.evaluate(() => getSelection()!.selectAllChildren(document.querySelector('p')!))
+    await captureNextMenu('selectionMenu')
+    await page.locator('p').click({ button: 'right' })
+    return page
+  }
+  const menuItemLabels = (path: string[]) =>
+    app.evaluate(({}, path) => {
+      let items: Electron.MenuItem[] = (globalThis as any).selectionMenu.items
+      for (const label of path) items = items.find((item) => item.label === label)!.submenu!.items
+      return items.map((item) => item.label)
+    }, path)
+
+  test('Add Selection to Canvas in a page’s menu puts the selected text on a note, with the page as its footer', async () => {
+    const canvas = await openCanvas('Quotes')
+    await rightClickSelection('quote-first')
+    await expect.poll(() => app.evaluate(() => (globalThis as any).selectionMenu.items.map((item: Electron.MenuItem) => item.label))).toContain('Add Selection to Canvas')
+    const offered = await menuItemLabels(['Add Selection to Canvas'])
+    expect(offered).toContain('Quotes')
+    expect(offered.at(-1)).toBe('New Canvas')
+    await app.evaluate(() => {
+      const add = (globalThis as any).selectionMenu.items.find((item: Electron.MenuItem) => item.label === 'Add Selection to Canvas')
+      add.submenu.items.find((item: Electron.MenuItem) => item.label === 'Quotes').click()
+    })
+    await app.evaluate((_electron, id) => (globalThis as any).arcBrowser.activate(id), canvas.id)
+    const board = await pageWithUrl(canvas.id)
+    const note = board.locator('.item.text.note')
+    await expect(note).toContainText('findme findme findme')
+    await expect(note.locator('.footer .title')).toHaveText('Page quote-first')
+    await expect.poll(() => savedNote(canvas)).toMatchObject({ card: true, wrapWidth: 280, text: 'findme findme findme', source: { url: `${base}/quote-first`, title: 'Page quote-first' } })
+  })
+
+  test('a quote can be edited like any note, and the footer comes back when it is done', async () => {
+    const canvas = await openCanvas('Edited quotes')
+    await rightClickSelection('quote-second')
+    await app.evaluate(() => {
+      const add = (globalThis as any).selectionMenu.items.find((item: Electron.MenuItem) => item.label === 'Add Selection to Canvas')
+      add.submenu.items.find((item: Electron.MenuItem) => item.label === 'Edited quotes').click()
+    })
+    await app.evaluate((_electron, id) => (globalThis as any).arcBrowser.activate(id), canvas.id)
+    const board = await pageWithUrl(canvas.id)
+    const note = board.locator('.item.text.note')
+    await expect(note.locator('.footer')).toBeVisible()
+    await note.dblclick()
+    await expect(textBeingTyped(board)).toBeFocused()
+    await board.keyboard.type('!')
+    await board.keyboard.press('Escape')
+    await expect(note.locator('.footer')).toBeVisible()
+    await expect.poll(() => savedNote(canvas)).toMatchObject({ text: 'findme findme findme!', source: { title: 'Page quote-second' } })
   })
 })
