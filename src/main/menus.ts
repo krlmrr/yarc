@@ -1,4 +1,5 @@
-import { app, clipboard, dialog, Menu, type ContextMenuParams, type MenuItemConstructorOptions } from 'electron'
+import { app, clipboard, dialog, Menu, type ContextMenuParams, type MenuItemConstructorOptions, type WebContents } from 'electron'
+import { join } from 'node:path'
 import { IPC, type EditRequest } from '../shared/ipc'
 import { paneIds, splitMenuModel } from '../shared/split'
 import { findCanvas, findFolder, findItem, isAwayFromSaved, spaceCanvases } from '../shared/tree'
@@ -6,6 +7,7 @@ import { THEMES } from '../shared/settings'
 import { SEARCH_ENGINES, searchUrl } from '../shared/url'
 import { bindingLabel, commandTitle, type CommandId } from '../shared/keymap'
 import type { Browser } from './browser'
+import { chromeInstalled } from './chrome'
 import type { LiveTab } from './tab'
 import type { Settings } from '../shared/types'
 
@@ -95,9 +97,13 @@ export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuP
       { label: 'Forward', enabled: wc.navigationHistory.canGoForward(), click: () => wc.navigationHistory.goForward() },
       { label: 'Reload', click: () => wc.reload() },
       { type: 'separator' },
-      { label: 'Copy URL', click: () => browser.dispatch({ type: 'copyUrl' }) },
-      { label: 'Open in Chrome', click: () => browser.dispatch({ type: 'openInChrome', id: tab.itemId }) }
+      { label: 'Save Page As…', click: () => void savePageAs(browser, wc) },
+      { label: 'Print…', click: () => wc.print() },
+      { type: 'separator' },
+      { label: 'Copy URL', click: () => browser.dispatch({ type: 'copyUrl' }) }
     )
+    if (chromeInstalled()) items.push({ label: 'Open in Chrome', click: () => browser.dispatch({ type: 'openInChrome', id: tab.itemId }) })
+    items.push({ type: 'separator' }, { label: 'View Page Source', click: () => browser.open(`view-source:${wc.getURL()}`, 'tab') })
     sep()
   }
   const fromExtensions = browser.extensions.contextMenuItems(tab, p)
@@ -111,6 +117,16 @@ export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuP
 }
 
 /** Waits until a reopened window shows: showing moves focus, which would close a just-opened command bar. */
+async function savePageAs(browser: Browser, wc: WebContents): Promise<void> {
+  const name = wc.getTitle().replace(/[\\/:*?"<>|]/g, '-').trim() || 'Page'
+  const { canceled, filePath } = await dialog.showSaveDialog(browser.window.win, {
+    defaultPath: join(app.getPath('downloads'), `${name}.html`),
+    filters: [{ name: 'Web Page, Complete', extensions: ['html'] }]
+  })
+  if (canceled || !filePath) return
+  await wc.savePage(filePath, 'HTMLComplete').catch(() => browser.toast('Couldn’t save the page'))
+}
+
 function commandRunner(browser: Browser): (cmd: CommandId) => () => void {
   return (cmd) => () => {
     browser.useFocused()

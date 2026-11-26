@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { PinnedFolder } from '../../src/shared/types'
-import { app, base, dispatch, pageWithUrl, serveFeed, space, state, useApp } from './app'
+import { app, base, captureNextMenu, dispatch, pageWithUrl, serveFeed, space, state, useApp } from './app'
 
 useApp()
 
@@ -171,4 +171,31 @@ test('Whole Page captures the full length of a page, past what is on screen', as
   expect(size.image.height / size.image.width).toBeGreaterThan(2)
   expect(size.attached).toBe(false)
   await dispatch({ type: 'close', id: (await space()).activeItemId! })
+})
+
+test('a page’s menu saves the page, prints it and shows its source', async () => {
+  await dispatch({ type: 'open', url: `${base}/page-menu`, where: 'tab' })
+  const tabId = (await space()).activeItemId!
+  const page = await pageWithUrl('/page-menu')
+  const savedTo = join(mkdtempSync(join(tmpdir(), 'saved-page-')), 'page.html')
+  await app.evaluate(({ dialog }, path) => {
+    const globals = globalThis as any
+    globals.realShowSaveDialog = dialog.showSaveDialog
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog
+  }, savedTo)
+  const choose = (label: string) => app.evaluate((_electron, wanted) => (globalThis as any).pageMenu.items.find((item: Electron.MenuItem) => item.label === wanted).click(), label)
+  try {
+    await captureNextMenu('pageMenu')
+    await page.mouse.click(600, 400, { button: 'right' })
+    await expect.poll(() => app.evaluate(() => (globalThis as any).pageMenu?.items.map((item: Electron.MenuItem) => item.label) ?? [])).toEqual(expect.arrayContaining(['Save Page As…', 'Print…', 'View Page Source']))
+    await choose('Save Page As…')
+    await expect.poll(() => existsSync(savedTo) && readFileSync(savedTo, 'utf8')).toContain('page-menu')
+    await choose('View Page Source')
+    await expect.poll(async () => (await space()).today.some((tab) => tab.url === `view-source:${base}/page-menu`)).toBe(true)
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = (globalThis as any).realShowSaveDialog
+    })
+    for (const tab of (await space()).today.filter((today) => today.id === tabId || today.url.startsWith('view-source:'))) await dispatch({ type: 'close', id: tab.id })
+  }
 })
