@@ -1,7 +1,8 @@
-import { session, type BaseWindow, type ContextMenuParams, type MenuItem, type Point, type Session } from 'electron'
+import { MenuItem, session, type BaseWindow, type ContextMenuParams, type Menu, type Point, type Rectangle, type Session, type WebContents } from 'electron'
 import { ElectronChromeExtensions } from 'electron-chrome-extensions'
 import { installChromeWebStore, uninstallExtension, updateExtensions } from 'electron-chrome-web-store'
 import { join } from 'node:path'
+import { everyInstalledPinned } from '../shared/extension-pins'
 import type { ID } from '../shared/types'
 import type { Browser } from './browser'
 import { NetRules } from './declarative-net-request'
@@ -15,6 +16,7 @@ const UPDATE_EVERY = 5 * 3600_000
 type LibraryInternals = { api?: { permissions?: { permissionMap?: Map<string, Grant> } } }
 /** The library's PopupView, which it doesn't export. */
 type Popup = { parent?: BaseWindow; on(event: 'will-move', listener: (position: Point) => void): void }
+type ActionMenu = { menu: Menu; extensionId: string; anchorRect: Rectangle; sender?: WebContents }
 
 interface ProfileExtensions {
   library: ElectronChromeExtensions
@@ -37,6 +39,7 @@ export class Extensions {
 
   async setup(rt: ProfileRuntime): Promise<void> {
     const b = this.browser
+    const firstStartWithPins = !b.store.profile(rt.id)?.pinnedExtensions
     const folder = join(b.profiles.dir(rt.id), 'Extensions')
     const grants = new ExtensionGrants(join(b.profiles.dir(rt.id), 'extension-permissions.json'))
     const rules = new NetRules(
@@ -87,6 +90,14 @@ export class Extensions {
       // The library places the popup from the anchor plus the window's origin; the position it emits is the one it then applies.
       if (origin) popup.on('will-move', (position: Point) => Object.assign(position, { x: position.x + origin.x, y: position.y + origin.y }))
     })
+    ext.on('browser-action-context-menu', ({ menu, extensionId, anchorRect, sender }: ActionMenu) => {
+      const clickedWindow = (sender && b.windowOf(sender)) ?? b.window
+      const pinned = b.store.profile(rt.id)?.pinnedExtensions?.includes(extensionId) ?? false
+      menu.append(new MenuItem({ type: 'separator' }))
+      menu.append(new MenuItem({ label: pinned ? 'Unpin' : 'Pin', click: () => b.setExtensionPin(rt.id, extensionId, !pinned) }))
+      const origin = b.sidebarOrigin(clickedWindow.win) ?? { x: 0, y: 0 }
+      menu.popup({ window: clickedWindow.win, x: Math.floor(anchorRect.x + origin.x), y: Math.floor(anchorRect.y + anchorRect.height + origin.y) })
+    })
     this.byProfile.set(rt.id, { library: ext, session: rt.session, folder, grants, rules })
     // After the library's preload (registered above), so `chrome` already has its APIs to copy.
     const filePath = join(__dirname, '../preload/extension-browser.js')
@@ -114,6 +125,11 @@ export class Extensions {
       console.error('[extensions] web store setup failed', err)
     }
     refresh()
+    const profile = b.store.profile(rt.id)
+    if (profile && firstStartWithPins) {
+      profile.pinnedExtensions = everyInstalledPinned(profile.pinnedExtensions, b.extensionList[rt.id])
+      b.changed()
+    }
     const update = () => updateExtensions(rt.session).catch((err: unknown) => console.warn('[extensions] update failed', err))
     setTimeout(update, 60_000)
     setInterval(update, UPDATE_EVERY)
@@ -123,6 +139,7 @@ export class Extensions {
     const profile = this.byProfile.get(profileId)
     if (!profile) return
     await uninstallExtension(extensionId, { session: profile.session, extensionsPath: profile.folder })
+    this.browser.setExtensionPin(profileId, extensionId, false)
     profile.grants.forget(extensionId)
     await profile.rules.forget(extensionId)
     await profile.session.clearStorageData({ origin: `chrome-extension://${extensionId}` })

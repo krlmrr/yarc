@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/index.js b/dist/cjs/index.js
-index a91ca8fd07194abb081e9bb35fad0060fefddf91..7d7c09d7d0319a8459e625274700228d4e890bb0 100644
+index a91ca8fd07194abb081e9bb35fad0060fefddf91..3aa4017deb96c4d1e25e4feb77525bd7a5d9e829 100644
 --- a/dist/cjs/index.js
 +++ b/dist/cjs/index.js
 @@ -193,7 +193,8 @@ var _PopupView = class _PopupView extends import_node_events.EventEmitter {
@@ -12,7 +12,25 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..7d7c09d7d0319a8459e625274700228d
        webPreferences: {
          session: opts.session,
          sandbox: true,
-@@ -1907,6 +1908,10 @@ var NativeMessagingHost = class {
+@@ -581,7 +582,7 @@ var BrowserActionAPI = class {
+         this.activateClick(details);
+         break;
+       case "contextmenu":
+-        this.activateContextMenu(details);
++        this.activateContextMenu({ ...details, sender });
+         break;
+       default:
+         console.debug(`Ignoring unknown browserAction.activate event '${eventType}'`);
+@@ -669,6 +670,8 @@ var BrowserActionAPI = class {
+         }
+       });
+     }
++    // YARC: let the app add its own items and place the menu; it knows which view the button is in.
++    if (this.ctx.emit("browser-action-context-menu", { menu, extensionId, anchorRect, sender: details.sender })) return;
+     menu.popup({
+       x: Math.floor(anchorRect.x),
+       y: Math.floor(anchorRect.y + anchorRect.height)
+@@ -1907,6 +1910,10 @@ var NativeMessagingHost = class {
      this.process = (0, import_node_child_process.spawn)(config.path, [extensionUrl], {
        shell: false
      });
@@ -24,7 +42,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..7d7c09d7d0319a8459e625274700228d
      this.process.stderr.on("data", (data) => {
        d7("stderr: %s", data.toString());
 diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
-index 43929222572e4d6875cc192aca0750da79d8ff14..dcf954d598ee18a441fdd6f09121ac2b86a5a610 100644
+index 43929222572e4d6875cc192aca0750da79d8ff14..91e5e15b1d5bc581c90d0bd5b8036cb7ceafea35 100644
 --- a/dist/esm/index.mjs
 +++ b/dist/esm/index.mjs
 @@ -156,7 +156,8 @@ var _PopupView = class _PopupView extends EventEmitter {
@@ -37,7 +55,25 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..dcf954d598ee18a441fdd6f09121ac2b
        webPreferences: {
          session: opts.session,
          sandbox: true,
-@@ -1870,6 +1871,10 @@ var NativeMessagingHost = class {
+@@ -544,7 +545,7 @@ var BrowserActionAPI = class {
+         this.activateClick(details);
+         break;
+       case "contextmenu":
+-        this.activateContextMenu(details);
++        this.activateContextMenu({ ...details, sender });
+         break;
+       default:
+         console.debug(`Ignoring unknown browserAction.activate event '${eventType}'`);
+@@ -632,6 +633,8 @@ var BrowserActionAPI = class {
+         }
+       });
+     }
++    // YARC: let the app add its own items and place the menu; it knows which view the button is in.
++    if (this.ctx.emit("browser-action-context-menu", { menu, extensionId, anchorRect, sender: details.sender })) return;
+     menu.popup({
+       x: Math.floor(anchorRect.x),
+       y: Math.floor(anchorRect.y + anchorRect.height)
+@@ -1870,6 +1873,10 @@ var NativeMessagingHost = class {
      this.process = spawn2(config.path, [extensionUrl], {
        shell: false
      });

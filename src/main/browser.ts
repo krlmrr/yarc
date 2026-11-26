@@ -22,6 +22,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Action, DropTarget } from '../shared/actions'
+import { withPin } from '../shared/extension-pins'
 import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
 import { commandForInput, type CommandId } from '../shared/keymap'
 import { cleanLiveSource, liveFolderName } from '../shared/live-folders'
@@ -686,6 +687,13 @@ export class Browser implements TabHost {
   changed(): void {
     this.store.save()
     this.emitSoon()
+  }
+
+  setExtensionPin(profileId: ID, extensionId: string, pinned: boolean): void {
+    const profile = this.store.profile(profileId)
+    if (!profile) return
+    profile.pinnedExtensions = withPin(profile.pinnedExtensions ?? [], extensionId, pinned)
+    this.changed()
   }
 
   private relayout(): void {
@@ -1807,6 +1815,12 @@ export class Browser implements TabHost {
       case 'sitePermission':
         if (this.store.profile(action.profileId) && this.profiles.setSitePermission(action.profileId, action.origin, action.key, action.setting)) this.emitSoon()
         return
+      case 'extensionPin':
+        return this.setExtensionPin(action.profileId, action.extensionId, action.pinned)
+      case 'extensionsPopover': {
+        const origin = this.sidebarOrigin(this.window.win) ?? { x: 0, y: 0 }
+        return this.setOverlay({ kind: 'extensions', profileId: action.profileId, anchor: { ...action.anchor, x: action.anchor.x + origin.x, y: action.anchor.y + origin.y } })
+      }
       case 'itemMenu':
         return buildItemMenu(this, action.id)?.popup({ window: this.window.win })
       case 'folderMenu':
@@ -2114,6 +2128,10 @@ export class Browser implements TabHost {
 
   private winFor(wc: WebContents): WindowSession | undefined {
     return this.wins.find((window) => window.open && (window.main.ui === wc || window.main.overlay.webContents === wc))
+  }
+
+  windowOf(wc: WebContents): MainWindow | undefined {
+    return this.winFor(wc)?.main
   }
 
   private ownsLittle(wc: WebContents): boolean {
