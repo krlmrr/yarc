@@ -237,6 +237,22 @@ test('a profile with no extensions offers Get extensions, and one pinned once it
   }
 })
 
+test('an incognito window shows no puzzle button: it has no extensions to get', async () => {
+  const sidebars = () => app.windows().filter((page) => page.url().endsWith('index.html'))
+  const before = sidebars()
+  await expect(before[0].locator('.extensions-button')).toBeVisible()
+  await app.evaluate((_electron, url) => ((globalThis as any).incognitoBrowser = (globalThis as any).arcBrowser.openIncognito(url)), `${base}/incognito-page`)
+  try {
+    await expect.poll(() => sidebars().length).toBe(before.length + 1)
+    const incognito = sidebars().find((page) => !before.includes(page))!
+    await expect(incognito.locator('.urlbar')).toBeVisible()
+    await expect(incognito.locator('.extensions-button')).toHaveCount(0)
+  } finally {
+    await app.evaluate(() => (globalThis as any).incognitoBrowser.window.win.close())
+    await expect.poll(() => sidebars().length).toBe(before.length)
+  }
+})
+
 test('the extensions popover pins and unpins', async () => {
   const extId = await loadExtension(popupExtensionDir('popover pin'))
   const { profileId } = await space()
