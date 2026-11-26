@@ -92,6 +92,7 @@ const HOUSEKEEPING_EVERY = 5 * 60_000
 // Slack past the revealed sidebar's edge: room to grab it to resize, and no enter/leave flicker at the screen's edge.
 const SIDEBAR_REVEAL_GRACE_PX = 32
 const SIDEBAR_REVEAL_HIDE_DELAY_MS = 300
+const plainWindowForTests = () => !!process.env.YARC_TEST && !process.env.YARC_STARTUP_SCREENS
 
 /** Find on a canvas goes to its own page, which searches the board's texts. */
 const CANVAS_FIND_OPS = { find: 'open', findNext: 'next', findPrev: 'previous' } as const
@@ -295,7 +296,7 @@ export class Browser implements TabHost {
     }
     state.lastSeenVersion = app.getVersion()
     this.changed()
-    if (!this.store.firstRun || (process.env.YARC_TEST && !process.env.YARC_STARTUP_SCREENS)) return
+    if (!this.store.firstRun || plainWindowForTests()) return
     const showTour = () => this.setOverlay({ kind: 'tour', step: 'welcome' })
     const win = this.window.win
     if (win.isVisible()) showTour()
@@ -347,6 +348,15 @@ export class Browser implements TabHost {
     if (this.incognito || !hasBoard(spotlightId)) return
     this.setOverlay({ kind: 'none' })
     this.activate(this.canvases.createWhatsNew(this.space, spotlightId).id)
+  }
+
+  openCommandBarIfBlank(): void {
+    const activeId = this.space.activeItemId
+    if ((activeId && this.hasItem(activeId)) || this.store.firstRun || plainWindowForTests()) return
+    const window = this.cur
+    const openCommandBar = () => this.inWin(window, () => this.runCommand('newTab'))
+    if (window.main.win.isVisible()) openCommandBar()
+    else window.main.win.once('show', openCommandBar)
   }
 
   private tourEvent(event: TourEvent): void {
