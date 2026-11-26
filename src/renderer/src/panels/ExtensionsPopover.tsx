@@ -9,7 +9,8 @@ const GAP = 6
 const EDGE = 8
 
 export function ExtensionsPopover({ state, profileId, anchor, close }: { state: AppState; profileId: ID; anchor: Rect; close: () => void }) {
-  const ready = useBrowserActions(partitionOf(profileId))
+  const installed = state.extensions[profileId] ?? []
+  const ready = useBrowserActions(partitionOf(profileId), installed.length > 0)
   const pins = state.profiles.find((profile) => profile.id === profileId)?.pinnedExtensions ?? []
   const space = activeSpace(state)
   const tab = space?.activeItemId ? state.live[space.activeItemId]?.wcId : undefined
@@ -29,22 +30,29 @@ export function ExtensionsPopover({ state, profileId, anchor, close }: { state: 
       <div className="scrim clear" onMouseDown={close} />
       <div className="extensions-popover" style={{ left, top: anchor.y + anchor.height + GAP, width: WIDTH }}>
         <div className="extensions-title">Extensions</div>
-        {(state.extensions[profileId] ?? []).map((extension) => {
-          const pinned = pins.includes(extension.id)
-          return (
-            <div key={extension.id} className="extension-row" data-id={extension.id} onClickCapture={(event) => !(event.target as Element).closest('.pin') && open(event, extension.id)}>
-              {ready.has(extension.id) ? <ExtensionButton id={extension.id} profileId={profileId} tab={tab} alignment={alignment} /> : <span className="extension-action" />}
-              <span className="extension-name">{extension.name}</span>
-              <button
-                className={cx('icon-btn pin', pinned && 'on')}
-                title={pinned ? 'Unpin' : 'Pin'}
-                onClick={() => dispatch({ type: 'extensionPin', profileId, extensionId: extension.id, pinned: !pinned })}
-              >
-                <Icon name="pin" size={14} />
-              </button>
-            </div>
-          )
-        })}
+        {installed.length ? (
+          installed.map((extension) => {
+            const pinned = pins.includes(extension.id)
+            return (
+              <div key={extension.id} className="extension-row" data-id={extension.id} onClickCapture={(event) => !(event.target as Element).closest('.pin') && open(event, extension.id)}>
+                {ready.has(extension.id) ? <ExtensionButton id={extension.id} profileId={profileId} tab={tab} alignment={alignment} /> : <span className="extension-action" />}
+                <span className="extension-name">{extension.name}</span>
+                <button
+                  className={cx('icon-btn pin', pinned && 'on')}
+                  title={pinned ? 'Unpin' : 'Pin'}
+                  onClick={() => dispatch({ type: 'extensionPin', profileId, extensionId: extension.id, pinned: !pinned })}
+                >
+                  <Icon name="pin" size={14} />
+                </button>
+              </div>
+            )
+          })
+        ) : (
+          <button className="extension-row manage" onClick={() => dispatch({ type: 'extensionsStore' })}>
+            <Icon name="plus" size={14} />
+            <span className="extension-name">Get extensions</span>
+          </button>
+        )}
         <div className="extensions-line" />
         <button className="extension-row manage" onClick={() => dispatch({ type: 'overlay', mode: { kind: 'settings', section: 'extensions' } })}>
           <Icon name="settings" size={14} />

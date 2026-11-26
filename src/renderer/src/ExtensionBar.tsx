@@ -56,7 +56,7 @@ export function ExtensionBar({ state, profileId, tab }: { state: AppState; profi
   const installed = state.extensions[profileId] ?? []
   const ready = useBrowserActions(partitionOf(profileId), installed.length > 0)
   const profile = state.profiles.find((candidate) => candidate.id === profileId)
-  if (!installed.length || !profile) return null
+  if (!profile) return null
   return (
     <>
       {pinnedOf(profile, installed)
