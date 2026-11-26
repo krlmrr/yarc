@@ -317,3 +317,32 @@ test('right-clicking the sidebar offers new spaces, the appearance and its side;
     await dispatch({ type: 'close', id: tabId })
   }
 })
+
+test('a toast shows where it can be seen: in the sidebar on either side, and above the page while the sidebar is hidden', async () => {
+  await dispatch({ type: 'open', url: `${base}/toast-page`, where: 'tab' })
+  const tabId = (await space()).activeItemId!
+  const ui = await pageWithUrl('index.html')
+  const overlay = await pageWithUrl('overlay.html')
+  const copyUrl = () => app.evaluate(() => (globalThis as any).arcBrowser.runCommand('copyUrl'))
+  try {
+    for (const sidebarRight of [false, true]) {
+      await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight } })
+      await expect(ui.locator('.sidebar.right')).toHaveCount(sidebarRight ? 1 : 0)
+      await copyUrl()
+      const toast = ui.locator('.notices .toast', { hasText: 'Copied URL' })
+      await expect(toast).toBeVisible()
+      const box = (await toast.boundingBox())!
+      const page = (await state()).layout.content
+      expect(box.x + box.width <= page.x || box.x >= page.x + page.width).toBe(true)
+      await expect(toast).toHaveCount(0)
+    }
+    await dispatch({ type: 'settings', patch: { sidebarVisible: false } })
+    await copyUrl()
+    await expect.poll(overlayKind).toBe('notice')
+    await expect(overlay.getByText('Copied URL')).toBeVisible()
+    await expect.poll(overlayKind, { timeout: 5000 }).toBe('none')
+  } finally {
+    await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })
+    await dispatch({ type: 'close', id: tabId })
+  }
+})

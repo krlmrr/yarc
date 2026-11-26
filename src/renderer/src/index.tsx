@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { dividers, dragBorder, type Divider } from '../../shared/split'
 import { findItem } from '../../shared/tree'
-import type { SwipeHint } from '../../shared/ipc'
+import { TOAST_MS, type SwipeHint } from '../../shared/ipc'
 import type { AppState, Rect } from '../../shared/types'
 import { activeSpace, arc, cx, dispatch, displayHost, isMac, useAppState, useSpaceTheme } from './api'
 import { Icon } from './icons'
 import { Sidebar } from './Sidebar'
 import './styles.css'
-
-const TOAST_MS = 2200
 
 if (isMac) document.body.classList.add('vibrant')
 
@@ -24,7 +22,7 @@ function App() {
   const fullscreenPage = state.layout.views.length === 1 && state.layout.content.x === 0 && state.layout.content.y === 0
 
   return (
-    <div className={cx(isMac ? 'mac' : 'win', hidden && 'sidebar-hidden', state.fullscreen && 'fullscreen')} style={{ height: '100%' }}>
+    <div className={cx(isMac ? 'mac' : 'win', hidden && 'sidebar-hidden', s.sidebarRight && 'sidebar-right', state.fullscreen && 'fullscreen')} style={{ height: '100%' }}>
       {!hidden && !fullscreenPage ? <Sidebar state={state} /> : null}
       {!isMac && !state.fullscreen && !fullscreenPage ? <CaptionStrip state={state} /> : null}
       {hidden ? (

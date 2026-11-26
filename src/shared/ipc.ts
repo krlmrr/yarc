@@ -7,6 +7,8 @@ import type { PermissionPrompt, PromptOp } from './permissions'
 
 export type { HistoryRow, LittleState } from './ipc-types'
 
+export const TOAST_MS = 2200
+
 export const IPC = {
   state: 'arc:state',
   overlay: 'arc:overlay',

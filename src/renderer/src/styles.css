@@ -125,6 +125,12 @@
   gap: 6px;
 }
 
+.sidebar-right .notices {
+  left: auto;
+  right: 12px;
+  align-items: flex-end;
+}
+
 .swipe-strip {
   position: fixed;
   overflow: hidden;
