@@ -44,6 +44,8 @@ export interface PinnedCanvas {
   id: ID
   name: string
   lastActive: number
+  /** The What's New board until the user keeps it: closing it deletes it. */
+  temporary?: boolean
 }
 
 export type PinnedNode = PinnedTab | PinnedFolder | PinnedCanvas
@@ -141,9 +143,17 @@ export interface PersistedState {
   /** So the next newer version shows What's New. */
   lastSeenVersion?: string
   seenSpotlights?: string[]
+  /** The newest version whose changes the What's New board showed, or its pill was hidden for. */
+  whatsNewSeenVersion?: string
   waitingUpdate?: WaitingUpdate
   /** The last focused one last. */
   windows: WindowView[]
+}
+
+/** The canvas made for a big feature (docs/whats-new-canvas.md), as the What's New pill lists it. */
+export interface FeatureBoard {
+  spotlight: string
+  title: string
 }
 
 /** Survives a restart that didn't install the update; stale once a version other than `from` runs. */
@@ -245,6 +255,8 @@ export interface AppState extends PersistedState {
   /** `elsewhere`: live in another window, shown here as a still. `bar`: a split pane's bar above the page. */
   layout: { content: Rect; views: { id: ID; rect: Rect; bar?: Rect; elsewhere?: boolean }[]; splitId?: ID }
   update: UpdateStatus
+  /** While changes wait that the user hasn't looked at: the sidebar's What's New pill. Nothing opens by itself. */
+  whatsNew?: { boards: FeatureBoard[] }
   sitePermissions: Record<ID, SitePermissionRow[]>
   /** Only on the tour's import step; undefined while still looking. */
   importChoices?: ImportChoice[]
@@ -298,7 +310,7 @@ export type OverlayMode =
   | { kind: 'split-drop' }
   | { kind: 'tour'; step: TourStep }
   /** Spotlight cards first, then the releases since the user's last version, newest first. */
-  | { kind: 'whats-new'; releases: ReleaseNotes[]; spotlights: string[] }
+  | { kind: 'whats-new'; releases: ReleaseNotes[]; spotlights: string[]; /** The spotlights with a board to try the feature on (src/main/whats-new-boards.ts). */ boards: string[] }
   | { kind: 'update' }
   /** `page`: where the active page sits in the overlay, which covers the content area. */
   | { kind: 'capture'; page: Rect }

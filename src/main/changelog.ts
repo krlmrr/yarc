@@ -34,6 +34,11 @@ export function pendingReleases(changelog: Changelog, current: string, target: s
   return notes(changelog, (v) => compareVersions(v, current) > 0 && compareVersions(v, target) <= 0)
 }
 
+/** A build that isn't a release has no version of its own to compare with. */
+export function newestVersion(changelog: Changelog): string | undefined {
+  return notes(changelog, () => true)[0]?.version
+}
+
 function listsOfText(json: unknown): Record<string, string[]> {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return {}
   return Object.fromEntries(Object.entries(json).filter(([, list]) => Array.isArray(list) && list.every((item) => typeof item === 'string')))

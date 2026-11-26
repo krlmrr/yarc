@@ -35,6 +35,7 @@ import type {
   PinnedNode,
   PinnedTab,
   Rect,
+  ReleaseNotes,
   Space,
   Split,
   SplitAt,
@@ -49,8 +50,9 @@ import { hostOf, resolveInput } from '../shared/url'
 import { AdBlock } from './adblock'
 import { bookmarksHtml } from './bookmarks-export'
 import { Canvases } from './canvas'
-import { recentSpotlights, SPOTLIGHTS, unseenSpotlights } from '../shared/spotlights'
-import { parseChangelog, recentChanges, startupScreen } from './changelog'
+import { hasBoard } from './whats-new-boards'
+import { recentSpotlights, spotlight, SPOTLIGHTS, unseenSpotlights } from '../shared/spotlights'
+import { changesSince, newestVersion, parseChangelog, RECENT_VERSIONS, recentChanges } from './changelog'
 import { openInChrome } from './chrome'
 import { DownloadList } from './download-list'
 import { Extensions } from './extensions'
@@ -83,6 +85,7 @@ const isMac = process.platform === 'darwin'
 // Defined by electron.vite.config.ts from build/changelog.json; empty outside release builds.
 declare const __CHANGELOG__: unknown
 const CHANGELOG = parseChangelog(__CHANGELOG__)
+const whatsNewVersion = () => (app.isPackaged ? app.getVersion() : (newestVersion(CHANGELOG) ?? app.getVersion()))
 const UNLOAD_HIDDEN_AFTER = 3600_000
 const HOUSEKEEPING_EVERY = 5 * 60_000
 // Slack past the revealed sidebar's edge: room to grab it to resize, and no enter/leave flicker at the screen's edge.
@@ -169,6 +172,8 @@ export class Browser implements TabHost {
   private reportedLost: WindowSession | undefined
   readonly live = new Map<ID, LiveTab>()
   readonly canvases = new Canvases(this)
+  /** `since`: the version whose changes the user saw last. */
+  private waitingNews: { since?: string; releases: ReleaseNotes[]; spotlights: string[] } = { releases: [], spotlights: [] }
   private readonly liveFolders = new LiveFolders(this)
   private readonly media = new Media(this)
   private readonly swipe = new PageSwipe((page) => this.swipeTarget(page))
@@ -278,20 +283,69 @@ export class Browser implements TabHost {
   }
 
   private showStartupScreen(): void {
-    const current = app.getVersion()
-    const unseen = unseenSpotlights(SPOTLIGHTS, this.state.seenSpotlights)
-    const intro = startupScreen(this.store.firstRun, this.state.lastSeenVersion, current, CHANGELOG, unseen)
-    if (this.state.lastSeenVersion !== current || unseen.length) {
-      this.state.lastSeenVersion = current
-      this.state.seenSpotlights = [...new Set([...(this.state.seenSpotlights ?? []), ...unseen])]
-      this.changed()
+    this.canvases.discardTemporary()
+    const current = whatsNewVersion()
+    const state = this.state
+    const seen = state.whatsNewSeenVersion ?? state.lastSeenVersion
+    if (this.store.firstRun || !seen) this.markWhatsNewSeen()
+    else {
+      state.whatsNewSeenVersion = seen
+      this.waitingNews = { since: seen, releases: changesSince(CHANGELOG, seen, current), spotlights: unseenSpotlights(SPOTLIGHTS, state.seenSpotlights) }
     }
-    const plainWindowForTests = process.env.YARC_TEST && !process.env.YARC_STARTUP_SCREENS
-    if (intro.kind === 'none' || plainWindowForTests) return
-    const mode: OverlayMode = intro.kind === 'welcome' ? { kind: 'tour', step: 'welcome' } : intro
+    state.lastSeenVersion = app.getVersion()
+    this.changed()
+    if (!this.store.firstRun || (process.env.YARC_TEST && !process.env.YARC_STARTUP_SCREENS)) return
+    const showTour = () => this.setOverlay({ kind: 'tour', step: 'welcome' })
     const win = this.window.win
-    if (win.isVisible()) this.setOverlay(mode)
-    else win.once('show', () => this.setOverlay(mode))
+    if (win.isVisible()) showTour()
+    else win.once('show', showTour)
+  }
+
+  private markSpotlightsSeen(): void {
+    this.state.seenSpotlights = SPOTLIGHTS.map((known) => known.id)
+    this.waitingNews.spotlights = []
+  }
+
+  private markWhatsNewSeen(): void {
+    this.state.whatsNewSeenVersion = whatsNewVersion()
+    this.waitingNews.releases = []
+    this.markSpotlightsSeen()
+  }
+
+  private newsWaits(): boolean {
+    return this.waitingNews.releases.length + this.waitingNews.spotlights.length > 0
+  }
+
+  private spotlightsToShow(): string[] {
+    return this.newsWaits() ? this.waitingNews.spotlights : recentSpotlights(SPOTLIGHTS)
+  }
+
+  private boardsToOffer(): string[] {
+    return this.incognito ? [] : this.spotlightsToShow().filter(hasBoard)
+  }
+
+  private whatsNewPill(): AppState['whatsNew'] {
+    if (!this.newsWaits()) return undefined
+    return { boards: this.boardsToOffer().map((id) => ({ spotlight: id, title: spotlight(id)?.title ?? id })) }
+  }
+
+  /** Only ever on the user's click. What waits when there is something, else the latest changes and features. */
+  private openWhatsNew(): void {
+    const { releases } = this.waitingNews
+    this.setOverlay({
+      kind: 'whats-new',
+      releases: this.newsWaits() ? releases.slice(0, RECENT_VERSIONS) : recentChanges(CHANGELOG, whatsNewVersion()),
+      spotlights: this.spotlightsToShow(),
+      boards: this.boardsToOffer()
+    })
+    this.markWhatsNewSeen()
+    this.changed()
+  }
+
+  private openBoard(spotlightId: string): void {
+    if (this.incognito || !hasBoard(spotlightId)) return
+    this.setOverlay({ kind: 'none' })
+    this.activate(this.canvases.createWhatsNew(this.space, spotlightId).id)
   }
 
   private tourEvent(event: TourEvent): void {
@@ -583,6 +637,7 @@ export class Browser implements TabHost {
       peek: window.peek && !window.peek.tab.destroyed ? window.peek.tab.info() : undefined,
       layout: window.layout,
       update: this.updater.status,
+      whatsNew: this.whatsNewPill(),
       archive: [],
       sitePermissions: {},
       media: this.media.snapshot()
@@ -1086,6 +1141,7 @@ export class Browser implements TabHost {
     if (canvas) {
       // Closing a canvas only deselects it; Delete Canvas is in its menu.
       if (canvas.space.activeItemId === id) canvas.space.activeItemId = undefined
+      if (canvas.canvas.temporary) this.canvases.discard(id)
       this.layout()
       return this.changed()
     }
@@ -1548,7 +1604,7 @@ export class Browser implements TabHost {
       case 'capture':
         return this.startCapture()
       case 'whatsNew':
-        return this.setOverlay({ kind: 'whats-new', releases: recentChanges(CHANGELOG, app.getVersion()), spotlights: recentSpotlights(SPOTLIGHTS) })
+        return this.openWhatsNew()
       case 'floatingPlayerDemo':
         return void this.floatingPlayerDemo()
     }
@@ -1762,6 +1818,11 @@ export class Browser implements TabHost {
       case 'renameCanvas':
         this.canvases.rename(action.id, String(action.name))
         return this.changed()
+      case 'hideWhatsNew':
+        this.markWhatsNewSeen()
+        return this.changed()
+      case 'openBoard':
+        return this.openBoard(String(action.spotlight))
       case 'capture': {
         const mode = this.window.overlayMode
         this.setOverlay({ kind: 'none' }, false)
