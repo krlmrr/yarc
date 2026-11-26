@@ -802,6 +802,14 @@ export class Browser implements TabHost {
     this.changed()
   }
 
+  private focusWhatIsShown(): void {
+    const tab = this.activeTab()
+    if (tab) return tab.wc.focus()
+    const canvasId = this.space.activeItemId
+    if (canvasId && findCanvas(this.state, canvasId)) return this.canvases.page(canvasId).wc.focus()
+    this.window.win.webContents.focus()
+  }
+
   private activateCanvas(id: ID, focus = true): void {
     const hit = findCanvas(this.state, id)
     if (!hit) return
@@ -998,7 +1006,7 @@ export class Browser implements TabHost {
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncTrafficLights()
-    if (mode.kind === 'none' && refocus) this.activeTab()?.wc.focus()
+    if (mode.kind === 'none' && refocus) this.focusWhatIsShown()
     if (mode.kind === 'command') this.tourEvent('newTab')
     this.syncPrompts()
     this.emitSoon()
