@@ -34,6 +34,7 @@ export function overlayRect(mode: OverlayMode, frame: WindowFrame, tabDrag: bool
     }
     case 'extensions':
       return whole
+    case 'command':
     case 'split-drop':
     case 'peek':
     case 'capture':

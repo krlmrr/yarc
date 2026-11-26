@@ -165,3 +165,34 @@ test('after Escape closes the command bar on an empty window, ⌘T opens it agai
     await app.evaluate(() => (globalThis as any).arcBrowser.window.win.hide())
   }
 })
+
+test('with the command bar open, a click on a sidebar tab selects it at once and closes the bar', async () => {
+  await dispatch({ type: 'open', url: `${base}/bar-first`, where: 'tab' })
+  const first = (await space()).activeItemId!
+  await dispatch({ type: 'open', url: `${base}/bar-second`, where: 'tab' })
+  const second = (await space()).activeItemId!
+  const ui = await pageWithUrl('index.html')
+  const clickInSidebar = async (target: string) => {
+    await app.evaluate(() => (globalThis as any).arcBrowser.window.win.webContents.focus())
+    await ui.locator(target).first().click()
+  }
+  try {
+    await dispatch({ type: 'overlay', mode: { kind: 'command' } })
+    await expect.poll(overlayKind).toBe('command')
+    const overlayBounds = await app.evaluate(() => (globalThis as any).arcBrowser.window.overlay.getBounds())
+    expect(overlayBounds.x).toBeGreaterThanOrEqual((await state()).layout.content.x)
+
+    await clickInSidebar('.row:has-text("Page bar-first")')
+    await expect.poll(async () => (await space()).activeItemId).toBe(first)
+    await expect.poll(overlayKind).toBe('none')
+
+    await dispatch({ type: 'overlay', mode: { kind: 'command' } })
+    await expect.poll(overlayKind).toBe('command')
+    await clickInSidebar('.newtab')
+    await new Promise((done) => setTimeout(done, 300))
+    expect(await overlayKind()).toBe('command')
+  } finally {
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    for (const id of [first, second]) await dispatch({ type: 'close', id })
+  }
+})
