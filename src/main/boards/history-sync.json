@@ -1,0 +1,139 @@
+{
+  "items": [
+    {
+      "id": "title",
+      "kind": "text",
+      "x": 0,
+      "y": 0,
+      "width": 583,
+      "height": 45,
+      "text": "Your history syncs, and stays yours",
+      "size": "title",
+      "color": "ink",
+      "title": true
+    },
+    {
+      "id": "underline",
+      "kind": "draw",
+      "color": "purple",
+      "x": 2,
+      "y": 50,
+      "width": 600,
+      "height": 12,
+      "drawnWidth": 600,
+      "drawnHeight": 12,
+      "points": [
+        0,
+        7,
+        54,
+        2,
+        112,
+        9,
+        168,
+        3,
+        228,
+        10,
+        286,
+        3,
+        346,
+        9,
+        404,
+        3,
+        464,
+        10,
+        524,
+        4,
+        600,
+        7
+      ]
+    },
+    {
+      "id": "subtitle",
+      "kind": "text",
+      "x": 0,
+      "y": 78,
+      "width": 679,
+      "height": 20,
+      "text": "New in YARC: history syncs between your computers, encrypted, through a place you choose.",
+      "size": "body",
+      "color": "ink"
+    },
+    {
+      "id": "picture",
+      "kind": "image",
+      "fileId": "spotlight-history-sync",
+      "x": 0,
+      "y": 132,
+      "width": 1002,
+      "height": 366
+    },
+    {
+      "id": "hint-releases",
+      "kind": "text",
+      "x": 1032,
+      "y": 78,
+      "width": 300,
+      "height": 40,
+      "text": "What else shipped: this is the real page.\nPoint at it and press ▶",
+      "size": "body",
+      "color": "ink"
+    },
+    {
+      "id": "releases",
+      "kind": "capture",
+      "fileId": "releases-still",
+      "source": {
+        "url": "https://github.com/yenebeb/yarc/releases",
+        "title": "YARC releases on GitHub"
+      },
+      "capture": {
+        "viewport": {
+          "width": 1100,
+          "height": 900
+        },
+        "rect": {
+          "x": 304,
+          "y": 180,
+          "width": 788,
+          "height": 640
+        },
+        "scroll": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "x": 1038,
+      "y": 138,
+      "width": 436,
+      "height": 354
+    },
+    {
+      "id": "how",
+      "kind": "image",
+      "fileId": "spotlight-history-sync-turn-it-on",
+      "x": 0,
+      "y": 528,
+      "width": 560,
+      "height": 232
+    },
+    {
+      "id": "places",
+      "kind": "image",
+      "fileId": "spotlight-history-sync-places",
+      "x": 590,
+      "y": 528,
+      "width": 412,
+      "height": 232
+    },
+    {
+      "id": "who-can-read-it",
+      "kind": "image",
+      "fileId": "spotlight-history-sync-who-can-read-it",
+      "x": 1032,
+      "y": 528,
+      "width": 448,
+      "height": 232
+    }
+  ],
+  "background": "purple"
+}
