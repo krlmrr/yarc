@@ -172,10 +172,7 @@ test('with the command bar open, a click on a sidebar tab selects it at once and
   await dispatch({ type: 'open', url: `${base}/bar-second`, where: 'tab' })
   const second = (await space()).activeItemId!
   const ui = await pageWithUrl('index.html')
-  const clickInSidebar = async (target: string) => {
-    await app.evaluate(() => (globalThis as any).arcBrowser.window.win.webContents.focus())
-    await ui.locator(target).first().click()
-  }
+  const clickInSidebar = (target: string) => ui.locator(target).first().click()
   try {
     await dispatch({ type: 'overlay', mode: { kind: 'command' } })
     await expect.poll(overlayKind).toBe('command')

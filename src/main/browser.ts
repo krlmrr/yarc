@@ -479,13 +479,16 @@ export class Browser implements TabHost {
       if (!window.open) return
       const mode = window.main.overlayMode
       if (mode.kind !== 'command' && mode.kind !== 'switcher') return
-      // Windows blurs the overlay whenever a page finishes loading: hand the keyboard back; leaving the window or clicking the sidebar closes these panels.
+      // Windows blurs the overlay whenever a page finishes loading: hand the keyboard back; only leaving the window closes these panels.
       setTimeout(() => {
         if (!window.open || window.main.overlayMode !== mode) return
-        const sidebarClicked = win.webContents.isFocused()
-        if (win.isFocused() && !sidebarClicked) window.main.overlay.webContents.focus()
-        else this.inWin(window, () => this.setOverlay({ kind: 'none' }, sidebarClicked))
+        if (win.isFocused()) window.main.overlay.webContents.focus()
+        else this.inWin(window, () => this.setOverlay({ kind: 'none' }, false))
       }, 50)
+    })
+    win.webContents.on('before-mouse-event', (_event, mouse) => {
+      const kind = window.main.overlayMode.kind
+      if (mouse.type === 'mouseDown' && (kind === 'command' || kind === 'switcher')) this.inWin(window, () => this.setOverlay({ kind: 'none' }, false))
     })
     const active = this.space.activeItemId
     if (active && this.hasItem(active)) this.activate(active)
