@@ -116,7 +116,6 @@ export function buildContextMenu(browser: Browser, tab: LiveTab, p: ContextMenuP
   return Menu.buildFromTemplate(items)
 }
 
-/** Waits until a reopened window shows: showing moves focus, which would close a just-opened command bar. */
 async function savePageAs(browser: Browser, wc: WebContents): Promise<void> {
   const name = wc.getTitle().replace(/[\\/:*?"<>|]/g, '-').trim() || 'Page'
   const { canceled, filePath } = await dialog.showSaveDialog(browser.window.win, {
@@ -127,6 +126,7 @@ async function savePageAs(browser: Browser, wc: WebContents): Promise<void> {
   await wc.savePage(filePath, 'HTMLComplete').catch(() => browser.toast('Couldn’t save the page'))
 }
 
+/** Waits until a reopened window shows: showing moves focus, which would close a just-opened command bar. */
 function commandRunner(browser: Browser): (cmd: CommandId) => () => void {
   return (cmd) => () => {
     browser.useFocused()
