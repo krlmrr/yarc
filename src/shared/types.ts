@@ -304,9 +304,22 @@ export interface ShareSource {
   thumbnail: string
 }
 
+export interface CommandBarPlace {
+  x: number
+  y: number
+  width: number
+}
+
 export type OverlayMode =
   | { kind: 'none' }
-  | { kind: 'command'; initial?: string; editCurrent?: boolean; target?: 'tab' | 'split' | 'current'; splitAt?: SplitAt }
+  | {
+      kind: 'command'
+      initial?: string
+      editCurrent?: boolean
+      target?: 'tab' | 'split' | 'current'
+      splitAt?: SplitAt
+      place?: CommandBarPlace
+    }
   | { kind: 'find' }
   | { kind: 'share-picker'; id: string; site: string; sources: ShareSource[]; systemAudio: boolean }
   /** A short message over the top of the page that doesn't take the keyboard. */

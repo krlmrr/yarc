@@ -172,7 +172,8 @@ test('with the command bar open, a click on a sidebar tab selects it at once and
   await dispatch({ type: 'open', url: `${base}/bar-second`, where: 'tab' })
   const second = (await space()).activeItemId!
   const ui = await pageWithUrl('index.html')
-  const clickInSidebar = (target: string) => ui.locator(target).first().click()
+  // A window that was shown and hidden again gets no animation frames, which Playwright's stability check waits for.
+  const clickInSidebar = (target: string) => ui.locator(target).first().click({ force: true })
   try {
     await dispatch({ type: 'overlay', mode: { kind: 'command' } })
     await expect.poll(overlayKind).toBe('command')
@@ -191,5 +192,43 @@ test('with the command bar open, a click on a sidebar tab selects it at once and
   } finally {
     await dispatch({ type: 'overlay', mode: { kind: 'none' } })
     for (const id of [first, second]) await dispatch({ type: 'close', id })
+  }
+})
+
+test('the command bar sits centred on the window at 35% of its height, and moves right only to stay clear of the sidebar', async () => {
+  const overlay = await pageWithUrl('overlay.html')
+  const resize = (width: number, height: number) =>
+    app.evaluate((_electron, [width, height]) => (globalThis as any).arcBrowser.window.win.setContentSize(width, height), [width, height] as const)
+  const original = await app.evaluate(() => (globalThis as any).arcBrowser.window.win.getContentSize() as [number, number])
+  const barInWindow = async () => {
+    const box = await overlay.locator('.panel.command').boundingBox()
+    const { bounds, size } = await app.evaluate(() => {
+      const window = (globalThis as any).arcBrowser.window
+      const [width, height] = window.win.getContentSize()
+      return { bounds: window.overlay.getBounds(), size: { width, height } }
+    })
+    return box && { left: bounds.x + box.x, centreOffset: Math.round(bounds.x + box.x + box.width / 2 - size.width / 2), top: Math.round(bounds.y + box.y), wanted: Math.round(size.height * 0.35) }
+  }
+  const openBar = async () => {
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    await dispatch({ type: 'overlay', mode: { kind: 'command' } })
+  }
+  try {
+    await resize(1400, 900)
+    for (const sidebarVisible of [true, false]) {
+      await dispatch({ type: 'settings', patch: { sidebarVisible } })
+      await openBar()
+      await expect.poll(async () => Math.abs((await barInWindow())?.centreOffset ?? 99)).toBeLessThanOrEqual(1)
+      const bar = (await barInWindow())!
+      expect(Math.abs(bar.top - bar.wanted)).toBeLessThanOrEqual(1)
+    }
+    await dispatch({ type: 'settings', patch: { sidebarVisible: true } })
+    await resize(760, 600)
+    await openBar()
+    await expect.poll(async () => (await barInWindow())?.left ?? 0).toBeGreaterThanOrEqual((await state()).layout.content.x)
+  } finally {
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    await dispatch({ type: 'settings', patch: { sidebarVisible: true } })
+    await resize(...original)
   }
 })

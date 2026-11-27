@@ -68,7 +68,7 @@ import { runPageAction } from './page-actions'
 import { Peek, sameSite } from './peek'
 import { buildAppMenu, buildCanvasMenu, buildContextMenu, buildFolderMenu, buildItemMenu, buildSidebarMenu, buildSpaceMenu, buildSplitMenu } from './menus'
 import { Profiles, type ProfileRuntime } from './profiles'
-import { overlayRect, peekRects, promptAnchor, trafficLightsAt, type WindowFrame } from './overlay-layout'
+import { commandBarPlace, overlayRect, peekRects, promptAnchor, trafficLightsAt, type WindowFrame } from './overlay-layout'
 import { PageSwipe, type SwipeTarget } from './page-swipe'
 import { PromptView } from './prompt-view'
 import { search, suggest } from './search'
@@ -905,7 +905,7 @@ export class Browser implements TabHost {
     }
     this.cur.layout = { content, views, splitId }
     if (this.cur.peek) mainWindow.setTop(this.cur.peek.tab.view, peekRects(content).card)
-    const mode = mainWindow.overlayMode.kind === 'peek' ? this.peekMode() : mainWindow.overlayMode
+    const mode = mainWindow.overlayMode.kind === 'peek' ? this.peekMode() : this.placed(mainWindow.overlayMode)
     if (mode.kind !== 'none') mainWindow.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncPrompts()
     this.syncMirrors()
@@ -1020,6 +1020,7 @@ export class Browser implements TabHost {
     this.watchSidebarReveal(mode.kind === 'sidebar' && !this.cur.tabDrag)
     if (mode.kind !== 'switcher') this.cur.switcher = undefined
     if (mode.kind !== 'space-editor' && this.colorPreview?.window === this.cur) this.colorPreview = undefined
+    mode = this.placed(mode)
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncTrafficLights()
@@ -1137,6 +1138,13 @@ export class Browser implements TabHost {
     if (!this.window.win.isDestroyed()) this.window.setTop(undefined)
     peek.destroy()
     this.emitSoon()
+  }
+
+  private placed(mode: OverlayMode): OverlayMode {
+    if (mode.kind !== 'command') return mode
+    const place = commandBarPlace(this.frame())
+    const unmoved = mode.place && mode.place.x === place.x && mode.place.y === place.y && mode.place.width === place.width
+    return unmoved ? mode : { ...mode, place }
   }
 
   private peekMode(): OverlayMode {

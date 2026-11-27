@@ -5,6 +5,10 @@
   background: color-mix(in oklab, var(--space) 10%, var(--panel));
 }
 
+.panel.command.placed {
+  transform: none;
+}
+
 .results {
   max-height: min(460px, 60vh);
   overflow-y: auto;

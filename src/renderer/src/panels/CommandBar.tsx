@@ -115,7 +115,11 @@ export function CommandBar({ state, mode, close }: { state: AppState; mode: Extr
   const placeholder = site ? `Search ${site.site.name}…` : PLACEHOLDER[target]
 
   return (
-    <div className="panel command" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className={cx('panel command', mode.place && 'placed')}
+      style={mode.place ? { left: mode.place.x, top: mode.place.y, width: mode.place.width } : undefined}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       <div className="field">
         <Icon name="search" size={18} />
         {site ? (
