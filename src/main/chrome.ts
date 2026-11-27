@@ -20,6 +20,8 @@ function chromePath(): string | undefined {
   return undefined
 }
 
+export const chromeInstalled = (): boolean => !!chromePath()
+
 export async function openInChrome(url: string): Promise<boolean> {
   const path = chromePath()
   if (!path) return false
