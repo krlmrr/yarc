@@ -23,7 +23,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Action, DropTarget } from '../shared/actions'
 import { withPin } from '../shared/extension-pins'
-import { IPC, type LittleAnchor, type LittleOp } from '../shared/ipc'
+import { IPC, TOAST_MS, type LittleAnchor, type LittleOp } from '../shared/ipc'
 import { commandForInput, type CommandId } from '../shared/keymap'
 import { cleanLiveSource, liveFolderName } from '../shared/live-folders'
 import { containsNode, findCanvas, findFolder, findInPinned, findItem, profileOfItem, spaceCanvases, spaceItems, stripKind, walkPinned } from '../shared/tree'
@@ -714,7 +714,19 @@ export class Browser implements TabHost {
 
   toast(text: string): void {
     const win = this.window?.win
-    if (win && !win.isDestroyed()) win.webContents.send(IPC.toast, text)
+    if (!win || win.isDestroyed()) return
+    // The sidebar draws toasts under the page, which covers them while the sidebar is hidden.
+    if (!this.state.settings.sidebarVisible && this.window.overlayMode.kind === 'none') return this.showNotice(text, TOAST_MS)
+    win.webContents.send(IPC.toast, text)
+  }
+
+  private showNotice(text: string, closeAfterMs: number): void {
+    const notice: OverlayMode = { kind: 'notice', text }
+    this.setOverlay(notice, false)
+    const window = this.cur
+    setTimeout(() => {
+      if (window.open && this.wins.includes(window)) this.inWin(window, () => this.window.overlayMode === notice && this.setOverlay({ kind: 'none' }, false))
+    }, closeAfterMs)
   }
 
   changed(): void {
@@ -2105,12 +2117,7 @@ export class Browser implements TabHost {
     // A page in full screen could draw a fake browser or system: say whose page it is and how to leave.
     if (on && this.pageInFront()) {
       const site = hostOf(tab.wc.getURL())
-      const notice: OverlayMode = { kind: 'notice', text: `${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit` }
-      this.setOverlay(notice, false)
-      const window = this.cur
-      setTimeout(() => {
-        if (window.open && this.wins.includes(window)) this.inWin(window, () => this.window.overlayMode === notice && this.setOverlay({ kind: 'none' }, false))
-      }, 3500)
+      this.showNotice(`${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit`, 3500)
     } else if (!on && this.window.overlayMode.kind === 'notice') this.setOverlay({ kind: 'none' }, false)
   }
 
