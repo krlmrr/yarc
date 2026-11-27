@@ -6,7 +6,23 @@
 }
 
 .panel.command.placed {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--bar-top) - 16px);
   transform: none;
+  animation-name: pop-in-place;
+}
+
+.panel.command.placed .results {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@keyframes pop-in-place {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
 }
 
 .results {

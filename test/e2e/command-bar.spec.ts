@@ -226,6 +226,13 @@ test('the command bar sits centred on the window at 35% of its height, and moves
     await resize(760, 600)
     await openBar()
     await expect.poll(async () => (await barInWindow())?.left ?? 0).toBeGreaterThanOrEqual((await state()).layout.content.x)
+
+    await resize(760, 360)
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    await dispatch({ type: 'overlay', mode: { kind: 'command', initial: 'e' } })
+    await expect(overlay.locator('.command .result').first()).toBeVisible()
+    const panel = (await overlay.locator('.panel.command').boundingBox())!
+    expect(panel.y + panel.height).toBeLessThanOrEqual(await overlay.evaluate(() => innerHeight))
   } finally {
     await dispatch({ type: 'overlay', mode: { kind: 'none' } })
     await dispatch({ type: 'settings', patch: { sidebarVisible: true } })
