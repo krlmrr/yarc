@@ -660,6 +660,7 @@ export class Browser implements TabHost {
       live,
       downloads: this.downloads.items,
       extensions: this.extensionList,
+      incognito: this.incognito,
       platform: process.platform,
       maximized: open && win.isMaximized(),
       fullscreen: open && win.isFullScreen(),

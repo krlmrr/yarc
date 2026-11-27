@@ -222,12 +222,16 @@ async function expectPopupInsideWindow(click: () => Promise<void>): Promise<void
 const popupExtensionDir = (name: string) =>
   extensionDir({ 'manifest.json': { manifest_version: 3, name, version: '1.0', action: { default_popup: 'popup.html' } }, 'popup.html': 'popup' })
 
-test('a pinned extension shows in a profile whose extensions started after its sidebar did', async () => {
+test('a profile with no extensions offers Get extensions, and one pinned once its extensions start still shows', async () => {
   const before = await space()
   await dispatch({ type: 'createSpace', name: 'Late', emoji: '🐢', color: '#3fa7d6', profileId: 'new' })
   const late = await space()
   const ui = app.windows().find((page) => page.url().endsWith('index.html'))!
-  await expect(ui.locator('.extensions-button')).toHaveCount(0)
+  const overlay = await pageWithUrl('overlay.html')
+  await ui.locator('.extensions-button').click()
+  await expect.poll(overlayKind).toBe('extensions')
+  await expect(overlay.locator('.extension-row', { hasText: 'Get extensions' })).toBeVisible()
+  await dispatch({ type: 'overlay', mode: { kind: 'none' } })
   await dispatch({ type: 'open', url: `${base}/late-profile`, where: 'tab' })
   const extId = await loadExtension(popupExtensionDir('late profile'))
   try {
@@ -237,6 +241,22 @@ test('a pinned extension shows in a profile whose extensions started after its s
     await removeExtension(extId)
     await dispatch({ type: 'switchSpace', id: before.id })
     await dispatch({ type: 'deleteSpace', id: late.id })
+  }
+})
+
+test('an incognito window shows no puzzle button: it has no extensions to get', async () => {
+  const sidebars = () => app.windows().filter((page) => page.url().endsWith('index.html'))
+  const before = sidebars()
+  await expect(before[0].locator('.extensions-button')).toBeVisible()
+  await app.evaluate((_electron, url) => ((globalThis as any).incognitoBrowser = (globalThis as any).arcBrowser.openIncognito(url)), `${base}/incognito-page`)
+  try {
+    await expect.poll(() => sidebars().length).toBe(before.length + 1)
+    const incognito = sidebars().find((page) => !before.includes(page))!
+    await expect(incognito.locator('.urlbar')).toBeVisible()
+    await expect(incognito.locator('.extensions-button')).toHaveCount(0)
+  } finally {
+    await app.evaluate(() => (globalThis as any).incognitoBrowser.window.win.close())
+    await expect.poll(() => sidebars().length).toBe(before.length)
   }
 })
 

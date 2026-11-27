@@ -253,6 +253,7 @@ export interface AppState extends PersistedState {
   live: Record<ID, LiveInfo>
   downloads: DownloadItemInfo[]
   extensions: Record<ID, ExtensionInfo[]>
+  incognito: boolean
   platform: NodeJS.Platform
   maximized: boolean
   fullscreen: boolean
