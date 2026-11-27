@@ -1026,6 +1026,7 @@ export class Browser implements TabHost {
     if (mode.kind !== 'switcher') this.cur.switcher = undefined
     if (mode.kind !== 'space-editor' && this.colorPreview?.window === this.cur) this.colorPreview = undefined
     mode = this.placed(mode)
+    if (mode.kind !== current.kind) this.window.sendToOverlay(IPC.toast, '')
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncTrafficLights()
