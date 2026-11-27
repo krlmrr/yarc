@@ -59,7 +59,7 @@ export function useToast(): string | undefined {
   useEffect(
     () =>
       arc.onToast((text) => {
-        setText(text)
+        setText(text || undefined)
         clearTimeout(timer.current)
         timer.current = setTimeout(() => setText(undefined), TOAST_MS)
       }),
