@@ -123,7 +123,12 @@ async function savePageAs(browser: Browser, wc: WebContents): Promise<void> {
     filters: [{ name: 'Web Page, Complete', extensions: ['html'] }]
   })
   if (canceled || !filePath) return
-  await wc.savePage(filePath, 'HTMLComplete').catch(() => browser.toast('Couldn’t save the page'))
+  try {
+    if (wc.isDestroyed()) throw new Error('The tab closed while the dialog was open')
+    await wc.savePage(filePath, 'HTMLComplete')
+  } catch {
+    browser.toast('Couldn’t save the page')
+  }
 }
 
 /** Waits until a reopened window shows: showing moves focus, which would close a just-opened command bar. */
