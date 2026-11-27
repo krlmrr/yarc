@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CommandId } from '../../../shared/keymap'
 import { matchSiteSearch, siteSearchUrl, type SiteSearch } from '../../../shared/site-search'
 import type { AppState, OverlayMode, SearchResult } from '../../../shared/types'
@@ -115,7 +115,11 @@ export function CommandBar({ state, mode, close }: { state: AppState; mode: Extr
   const placeholder = site ? `Search ${site.site.name}…` : PLACEHOLDER[target]
 
   return (
-    <div className="panel command" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className={cx('panel command', mode.place && 'placed')}
+      style={mode.place ? ({ left: mode.place.x, top: mode.place.y, width: mode.place.width, '--bar-top': `${mode.place.y}px` } as CSSProperties) : undefined}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       <div className="field">
         <Icon name="search" size={18} />
         {site ? (

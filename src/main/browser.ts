@@ -68,7 +68,7 @@ import { runPageAction } from './page-actions'
 import { Peek, sameSite } from './peek'
 import { buildAppMenu, buildCanvasMenu, buildContextMenu, buildFolderMenu, buildItemMenu, buildSidebarMenu, buildSpaceMenu, buildSplitMenu } from './menus'
 import { Profiles, type ProfileRuntime } from './profiles'
-import { overlayRect, peekRects, promptAnchor, trafficLightsAt, type WindowFrame } from './overlay-layout'
+import { commandBarPlace, overlayRect, peekRects, promptAnchor, trafficLightsAt, type WindowFrame } from './overlay-layout'
 import { PageSwipe, type SwipeTarget } from './page-swipe'
 import { PromptView } from './prompt-view'
 import { search, suggest } from './search'
@@ -477,14 +477,18 @@ export class Browser implements TabHost {
     for (const wc of [win.webContents, window.main.overlay.webContents]) wc.on('blur', () => !wc.isDestroyed() && wc.send(IPC.blur))
     window.main.overlay.webContents.on('blur', () => {
       if (!window.open) return
-      const kind = window.main.overlayMode.kind
-      if (kind !== 'command' && kind !== 'switcher') return
+      const mode = window.main.overlayMode
+      if (mode.kind !== 'command' && mode.kind !== 'switcher') return
       // Windows blurs the overlay whenever a page finishes loading: hand the keyboard back; only leaving the window closes these panels.
       setTimeout(() => {
-        if (!window.open || window.main.overlayMode.kind !== kind) return
+        if (!window.open || window.main.overlayMode !== mode) return
         if (win.isFocused()) window.main.overlay.webContents.focus()
         else this.inWin(window, () => this.setOverlay({ kind: 'none' }, false))
       }, 50)
+    })
+    win.webContents.on('before-mouse-event', (_event, mouse) => {
+      const kind = window.main.overlayMode.kind
+      if (mouse.type === 'mouseDown' && (kind === 'command' || kind === 'switcher')) this.inWin(window, () => this.setOverlay({ kind: 'none' }, false))
     })
     const active = this.space.activeItemId
     if (active && this.hasItem(active)) this.activate(active)
@@ -901,7 +905,7 @@ export class Browser implements TabHost {
     }
     this.cur.layout = { content, views, splitId }
     if (this.cur.peek) mainWindow.setTop(this.cur.peek.tab.view, peekRects(content).card)
-    const mode = mainWindow.overlayMode.kind === 'peek' ? this.peekMode() : mainWindow.overlayMode
+    const mode = mainWindow.overlayMode.kind === 'peek' ? this.peekMode() : this.placed(mainWindow.overlayMode)
     if (mode.kind !== 'none') mainWindow.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncPrompts()
     this.syncMirrors()
@@ -1016,6 +1020,7 @@ export class Browser implements TabHost {
     this.watchSidebarReveal(mode.kind === 'sidebar' && !this.cur.tabDrag)
     if (mode.kind !== 'switcher') this.cur.switcher = undefined
     if (mode.kind !== 'space-editor' && this.colorPreview?.window === this.cur) this.colorPreview = undefined
+    mode = this.placed(mode)
     if (mode.kind !== 'none' && mode.kind !== current.kind) this.window.sendToOverlay(IPC.state, this.snapshot(this.cur, mode))
     this.window.setOverlay(mode, overlayRect(mode, this.frame(), !!this.cur.tabDrag))
     this.syncTrafficLights()
@@ -1133,6 +1138,13 @@ export class Browser implements TabHost {
     if (!this.window.win.isDestroyed()) this.window.setTop(undefined)
     peek.destroy()
     this.emitSoon()
+  }
+
+  private placed(mode: OverlayMode): OverlayMode {
+    if (mode.kind !== 'command') return mode
+    const place = commandBarPlace(this.frame())
+    const unmoved = mode.place && mode.place.x === place.x && mode.place.y === place.y && mode.place.width === place.width
+    return unmoved ? mode : { ...mode, place }
   }
 
   private peekMode(): OverlayMode {

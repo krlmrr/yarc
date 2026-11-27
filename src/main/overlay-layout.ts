@@ -1,7 +1,7 @@
 import type { Point, Rectangle } from 'electron'
 import { FLOATING_SIDEBAR_INSET, SIDEBAR_GAP, SIDEBAR_PAD, TOP_BAR_HEIGHT, URL_FIELD_HEIGHT } from '../shared/sidebar-geometry'
 import { isFloating } from '../shared/tour'
-import type { OverlayMode, Rect, Settings } from '../shared/types'
+import type { CommandBarPlace, OverlayMode, Rect, Settings } from '../shared/types'
 import { PROMPT_WIDTH, type PromptAnchor } from './prompt-view'
 import { PAD, TRAFFIC_LIGHTS, TRAFFIC_LIGHTS_WIDTH } from './window'
 
@@ -28,6 +28,7 @@ export function overlayRect(mode: OverlayMode, frame: WindowFrame, tabDrag: bool
     }
     case 'extensions':
       return whole
+    case 'command':
     case 'split-drop':
     case 'peek':
     case 'capture':
@@ -48,6 +49,22 @@ export function overlayRect(mode: OverlayMode, frame: WindowFrame, tabDrag: bool
     }
     default:
       return whole
+  }
+}
+
+const COMMAND_BAR = { maxWidth: 766, windowMargin: 32, pageMargin: 16, topShare: 0.35 }
+
+/** Centred on the window with its top at 35% of its height, moved only as far as it takes to stay over the page. */
+export function commandBarPlace(frame: WindowFrame): CommandBarPlace {
+  const { size, content } = frame
+  const width = Math.max(0, Math.min(COMMAND_BAR.maxWidth, size.width - 2 * COMMAND_BAR.windowMargin, content.width - 2 * COMMAND_BAR.pageMargin))
+  const leftmost = content.x + COMMAND_BAR.pageMargin
+  const rightmost = content.x + content.width - COMMAND_BAR.pageMargin - width
+  const centred = (size.width - width) / 2
+  return {
+    x: Math.round(Math.min(Math.max(centred, leftmost), rightmost) - content.x),
+    y: Math.round(size.height * COMMAND_BAR.topShare - content.y),
+    width: Math.round(width)
   }
 }
 
