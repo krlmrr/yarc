@@ -137,3 +137,31 @@ test('launching to an empty window opens the command bar for a new tab, and laun
   await expect.poll(windowShown).toBe(true)
   expect(await overlayKind()).toBe('none')
 })
+
+test('after Escape closes the command bar on an empty window, ⌘T opens it again', async () => {
+  for (let closed = 0; (await space()).activeItemId && closed < 50; closed++) await dispatch({ type: 'close', id: (await space()).activeItemId! })
+  const pressInFocusedView = (keyCode: string, modifiers: string[] = []) =>
+    app.evaluate(({ webContents }, [key, held]) => {
+      const focused = webContents.getFocusedWebContents()
+      if (!focused) return false
+      focused.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: held as any })
+      focused.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: held as any })
+      return true
+    }, [keyCode, modifiers] as const)
+  await app.evaluate(() => {
+    const window = (globalThis as any).arcBrowser.window.win
+    window.show()
+    window.focus()
+  })
+  try {
+    await dispatch({ type: 'overlay', mode: { kind: 'command' } })
+    await expect.poll(overlayKind).toBe('command')
+    expect(await pressInFocusedView('Escape')).toBe(true)
+    await expect.poll(overlayKind).toBe('none')
+    expect(await pressInFocusedView('T', [mod === 'meta' ? 'meta' : 'control'])).toBe(true)
+    await expect.poll(overlayKind).toBe('command')
+  } finally {
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    await app.evaluate(() => (globalThis as any).arcBrowser.window.win.hide())
+  }
+})
