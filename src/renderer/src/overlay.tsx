@@ -26,7 +26,8 @@ function App() {
   const state = useAppState()
   const { mode, opened } = useOverlayMode()
   const space = state ? activeSpace(state) : undefined
-  const appearanceOfRevealedSidebarOnly = mode.kind === 'sidebar' ? space?.appearance : undefined
+  const showsRevealedSidebar = mode.kind === 'sidebar' || (mode.kind === 'extensions' && !!mode.overSidebar)
+  const appearanceOfRevealedSidebarOnly = showsRevealedSidebar ? space?.appearance : undefined
   useSpaceTheme(space, appearanceOfRevealedSidebarOnly)
 
   if (!state || mode.kind === 'none') return null

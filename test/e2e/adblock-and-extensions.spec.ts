@@ -314,6 +314,7 @@ test('an extension opened from the popover opens inside the window, whichever si
       expect(await overlayKind()).toBe('none')
     }
     await dispatch({ type: 'settings', patch: { sidebarVisible: false, sidebarRight: true } })
+    await dispatch({ type: 'updateSpace', id: (await space()).id, appearance: 'dark' })
     await dispatch({ type: 'sidebarReveal', show: true })
     await overlay.locator('.extensions-button').click()
     await expect.poll(overlayKind).toBe('extensions')
@@ -322,8 +323,10 @@ test('an extension opened from the popover opens inside the window, whichever si
     expect(card.x).toBeGreaterThan(overlayWidth / 2)
     const sidebar = (await overlay.locator('.sidebar').boundingBox())!
     expect(sidebar.x + sidebar.width).toBeGreaterThan(overlayWidth - 20)
+    expect(await overlay.evaluate(() => document.documentElement.dataset.appearance)).toBe('dark')
     await expectPopupInsideWindow(() => overlay.locator(`.extension-row[data-id="${extId}"] button[is="browser-action"]`).click())
   } finally {
+    await dispatch({ type: 'updateSpace', id: (await space()).id, appearance: '' })
     await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })
     await dispatch({ type: 'close', id: tabId })
     await removeExtension(extId)
