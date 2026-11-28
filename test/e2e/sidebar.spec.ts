@@ -318,38 +318,34 @@ test('right-clicking the sidebar offers new spaces, the appearance and its side;
   }
 })
 
-test('a toast shows where it can be seen: in the sidebar on either side, and above the page while the sidebar is hidden', async () => {
+test('a toast is one small card at the bottom centre of the page, with the sidebar on either side or hidden, and over an open panel', async () => {
   await dispatch({ type: 'open', url: `${base}/toast-page`, where: 'tab' })
   const tabId = (await space()).activeItemId!
-  const ui = await pageWithUrl('index.html')
   const overlay = await pageWithUrl('overlay.html')
   const copyUrl = () => app.evaluate(() => (globalThis as any).arcBrowser.runCommand('copyUrl'))
+  const overlayBounds = () => app.evaluate(() => (globalThis as any).arcBrowser.window.overlay.getBounds())
   try {
-    for (const sidebarRight of [false, true]) {
-      await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight } })
-      await expect(ui.locator('.sidebar.right')).toHaveCount(sidebarRight ? 1 : 0)
+    for (const settings of [{ sidebarVisible: true, sidebarRight: false }, { sidebarVisible: true, sidebarRight: true }, { sidebarVisible: false, sidebarRight: false }]) {
+      await dispatch({ type: 'settings', patch: settings })
       await copyUrl()
-      const toast = ui.locator('.notices .toast', { hasText: 'Copied URL' })
-      await expect(toast).toBeVisible()
-      const box = (await toast.boundingBox())!
+      await expect.poll(overlayKind).toBe('notice')
+      await expect(overlay.locator('.notice .toast', { hasText: 'Copied URL' })).toBeVisible()
       const page = (await state()).layout.content
-      expect(box.x + box.width <= page.x || box.x >= page.x + page.width).toBe(true)
-      await expect(toast).toHaveCount(0)
+      await expect.poll(async () => (await overlayBounds()).width).toBeLessThan(200)
+      const card = await overlayBounds()
+      expect(Math.abs(card.x + card.width / 2 - (page.x + page.width / 2))).toBeLessThanOrEqual(1)
+      expect(page.y + page.height - (card.y + card.height)).toBeLessThan(20)
+      await expect.poll(overlayKind, { timeout: 5000 }).toBe('none')
     }
-    await dispatch({ type: 'settings', patch: { sidebarVisible: false } })
-    await copyUrl()
-    await expect.poll(overlayKind).toBe('notice')
-    await expect(overlay.getByText('Copied URL')).toBeVisible()
-    await expect.poll(overlayKind, { timeout: 5000 }).toBe('none')
 
     await dispatch({ type: 'overlay', mode: { kind: 'library', tab: 'history' } })
     await expect.poll(overlayKind).toBe('library')
     await copyUrl()
-    await expect(overlay.locator('.overlay-notices .toast', { hasText: 'Copied URL' })).toBeVisible()
+    await expect(overlay.locator('.panel-toast .toast', { hasText: 'Copied URL' })).toBeVisible()
     expect(await overlayKind()).toBe('library')
     await dispatch({ type: 'overlay', mode: { kind: 'settings' } })
     await expect.poll(overlayKind).toBe('settings')
-    await expect(overlay.locator('.overlay-notices .toast')).toHaveCount(0, { timeout: 500 })
+    await expect(overlay.locator('.panel-toast .toast')).toHaveCount(0, { timeout: 500 })
   } finally {
     await dispatch({ type: 'overlay', mode: { kind: 'none' } })
     await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })

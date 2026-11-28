@@ -37,7 +37,7 @@ Tokens are CSS custom properties in `src/renderer/src/tokens.css`: light on `:ro
 
 The window background is `linear-gradient(160deg, --bg, --bg-2)`. On macOS it is `linear-gradient(170deg, --vibrant-1, --vibrant-2)` over native vibrancy. Both carry a noise layer at 22%.
 
-The same in light and dark: `--danger` `#d33`, `--warning` `#d97706`, `--success` `#30a46c`, `--disabled-opacity` 0.4, `--float` / `--float-hover` / `--float-text` for dark round controls (Peek buttons, the notice), and `--white` / `--black` for text on a coloured fill, knobs and mixing.
+The same in light and dark: `--danger` `#d33`, `--warning` `#d97706`, `--success` `#30a46c`, `--disabled-opacity` 0.4, `--float` / `--float-hover` / `--float-text` for dark round controls (Peek buttons), and `--white` / `--black` for text on a coloured fill, knobs and mixing.
 
 The palette offered for a space is `SPACE_COLORS` in `src/shared/colors.ts`: `#7c6cf2` (default), `#e0607e`, `#3fa7d6`, `#3dbb8a`, `#f2a541`, `#c06cf2`, `#5b7bd6`, `#8a8a8a`, plus any colour from the HSV picker.
 
@@ -58,7 +58,7 @@ No font is shipped. `--font` is `-apple-system, BlinkMacSystemFont, 'Segoe UI Va
 | `--type-2xl` | 16 / 600 | Sheet header |
 | `--type-xl` | 15 / 500 | Command bar result, permission prompt |
 | `--type-lg` | 14 | Sidebar tab row |
-| `--type-md` | 13 | Base: space name, pane bar, notices |
+| `--type-md` | 13 | Base: space name, pane bar, toasts |
 | `--type-sm` | 12 | Secondary lines, pills, small buttons |
 | `--type-xs` | 11 / 600 | Eyebrows, key caps, result hints |
 
@@ -99,7 +99,7 @@ Shadows: `--active-shadow` for a selected row or tab, `--shadow-lg` for every fl
 
 ## Motion
 
-Short and eased out (`--ease`): `--duration-fade` 0.12s fades, `--duration-pop` 0.14s panel pop, `--duration-slide` 0.16s floating sidebar, `--duration-toast` 0.18s toast. Without a token: 0.22s tour panel, 0.35s space colour cross-fade. A toast stays 2.2s (`TOAST_MS`).
+Short and eased out (`--ease`): `--duration-fade` 0.12s fades, `--duration-pop` 0.14s panel pop, `--duration-slide` 0.16s floating sidebar, `--duration-toast` 0.18s toast. Without a token: 0.22s tour panel, 0.35s space colour cross-fade. A toast stays 2.2s (`TOAST_MS`). It is one card, `.toast` (`--panel`, fitted to its text), at the bottom centre of the page, in an overlay cut to the card; over an open panel, the panel draws it in the same place. The full-screen notice is the same card at the top.
 
 With Reduce Motion on, every page stops animating except the loading spinner and the progress bar.
 
@@ -118,7 +118,7 @@ About 67 line icons as inline paths in `src/renderer/src/icons.tsx`: 24 unit gri
 
 ## Layers in a window
 
-Native views, bottom to top: the window's UI (sidebar, pane bars, toasts), tab pages, the overlay (only while a panel is open), the Peek page, the permission prompt. CSS `z-index` is hardly used.
+Native views, bottom to top: the window's UI (sidebar, pane bars), tab pages, the overlay (only while a panel is open), the Peek page, the permission prompt. CSS `z-index` is hardly used.
 
 ## Rules these values follow
 

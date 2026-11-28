@@ -4,7 +4,7 @@ import { dividers, dragBorder, type Divider } from '../../shared/split'
 import { findItem } from '../../shared/tree'
 import type { SwipeHint } from '../../shared/ipc'
 import type { AppState, Rect } from '../../shared/types'
-import { activeSpace, arc, cx, dispatch, displayHost, isMac, useAppState, useSpaceTheme, useToast } from './api'
+import { activeSpace, arc, cx, dispatch, displayHost, isMac, useAppState, useSpaceTheme } from './api'
 import { Icon } from './icons'
 import { Sidebar } from './Sidebar'
 import './styles.css'
@@ -15,7 +15,6 @@ function App() {
   const state = useAppState()
   const space = state ? activeSpace(state) : undefined
   useSpaceTheme(space, space?.appearance)
-  const toast = useToast()
   if (!state || !space) return null
   const s = state.settings
   const hidden = !s.sidebarVisible
@@ -37,9 +36,6 @@ function App() {
       ) : null}
       <ContentDecor state={state} />
       <SwipeArrow />
-      <div className="notices">
-        {toast ? <div className="toast">{toast}</div> : null}
-      </div>
     </div>
   )
 }

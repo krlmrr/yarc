@@ -439,6 +439,8 @@ export async function dispatch(browser: Browser, action: Action): Promise<void> 
       return
     case 'extensionPin':
       return browser.setExtensionPin(action.profileId, action.extensionId, action.pinned)
+    case 'fitNotice':
+      return browser.fitNotice(action.width, action.height)
     case 'extensionsPopover': {
       const origin = browser.sidebarOrigin(browser.window.win) ?? { x: 0, y: 0 }
       return browser.setOverlay({ kind: 'extensions', profileId: action.profileId, anchor: { ...action.anchor, x: action.anchor.x + origin.x, y: action.anchor.y + origin.y } })

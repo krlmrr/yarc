@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MAX_PANES, paneIds, placePane, previewRect, sideAt, type Side } from '../../shared/split'
 import { isFloating } from '../../shared/tour'
@@ -42,11 +42,7 @@ function App() {
     case 'find':
       return <FindBar key={freshOnEachOpen} />
     case 'notice':
-      return (
-        <div className="notice" role="status" onMouseDown={close}>
-          {mode.text}
-        </div>
-      )
+      return <Notice text={mode.text} />
     case 'switcher':
       return <Switcher state={state} order={mode.order} index={mode.index} />
     case 'command':
@@ -302,12 +298,27 @@ function Switcher({ state, order, index }: { state: AppState; order: string[]; i
   )
 }
 
-/** Only while the sidebar, which shows toasts otherwise, is hidden under an open panel. */
+function Notice({ text }: { text: string }) {
+  const card = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const { width, height } = card.current!.getBoundingClientRect()
+    dispatch({ type: 'fitNotice', width, height })
+  }, [text])
+  return (
+    <div className="notice" role="status" onMouseDown={close}>
+      <div ref={card} className="notice-card">
+        <div className="toast">{text}</div>
+      </div>
+    </div>
+  )
+}
+
+/** Over a panel that covers the page, which a notice would replace. */
 function Toast() {
   const toast = useToast()
   if (!toast) return null
   return (
-    <div className="notices overlay-notices">
+    <div className="panel-toast">
       <div className="toast">{toast}</div>
     </div>
   )

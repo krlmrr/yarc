@@ -5,6 +5,9 @@ import type { CommandBarPlace, OverlayMode, Rect, Settings } from '../../shared/
 import { PROMPT_WIDTH, type PromptAnchor } from '../core/prompt-view'
 import { PAD, TRAFFIC_LIGHTS, TRAFFIC_LIGHTS_WIDTH } from '../core/window'
 
+/** Before the overlay has measured its card; `margin` is from the page's top or bottom edge. */
+const NOTICE = { width: 440, height: 56, margin: 8 }
+
 export interface WindowFrame {
   size: { width: number; height: number }
   content: Rect
@@ -34,8 +37,10 @@ export function overlayRect(mode: OverlayMode, frame: WindowFrame, tabDrag: bool
     case 'capture':
       return content
     case 'notice': {
-      const cardWidth = Math.min(440, content.width - 24)
-      return { x: centeredX(cardWidth), y: content.y + 16, width: cardWidth, height: 44 }
+      const cardWidth = Math.min(mode.card?.width ?? NOTICE.width, content.width - 24)
+      const cardHeight = mode.card?.height ?? NOTICE.height
+      const y = mode.at === 'top' ? content.y + NOTICE.margin : content.y + content.height - cardHeight - NOTICE.margin
+      return { x: centeredX(cardWidth), y, width: cardWidth, height: cardHeight }
     }
     case 'find': {
       const cardWidth = Math.min(380, content.width - 16)

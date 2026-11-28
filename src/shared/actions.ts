@@ -117,6 +117,7 @@ export type Action =
   | { type: 'extensionPin'; profileId: ID; extensionId: string; pinned: boolean }
   /** `anchor`: the puzzle button, in the coordinates of the view that sent it. */
   | { type: 'extensionsPopover'; profileId: ID; anchor: Rect }
+  | { type: 'fitNotice'; width: number; height: number }
   | { type: 'renameCanvas'; id: ID; name: string }
   | { type: 'canvasMenu'; id: ID }
   | { type: 'hideWhatsNew' }

@@ -583,18 +583,24 @@ export class Browser implements TabHost {
   toast(text: string): void {
     const win = this.window?.win
     if (!win || win.isDestroyed()) return
-    // The sidebar draws toasts under the page, which covers them while the sidebar is hidden.
-    if (!this.state.settings.sidebarVisible) {
-      const mode = this.window.overlayMode
-      if (mode.kind === 'none' || mode.kind === 'notice') return this.showNotice(text, TOAST_MS)
-      const overlay = overlayRect(mode, this.frame(), !!this.cur.tabDrag)
-      if (overlay && overlay.height >= this.frame().content.height) return this.window.sendToOverlay(IPC.toast, text)
-    }
-    win.webContents.send(IPC.toast, text)
+    const mode = this.window.overlayMode
+    const overlay = overlayRect(mode, this.frame(), !!this.cur.tabDrag)
+    const panelCoversPage = mode.kind !== 'notice' && !!overlay && overlay.height >= this.frame().content.height
+    if (panelCoversPage) return this.window.sendToOverlay(IPC.toast, text)
+    // The find bar is too small to show it and closing it would lose the search.
+    if (mode.kind !== 'find') this.showNotice(text, TOAST_MS, 'bottom')
   }
 
-  private showNotice(text: string, closeAfterMs: number): void {
-    const notice: OverlayMode = { kind: 'notice', text }
+  /** The overlay measured the notice's card: shrink to it, so the page around it still takes clicks. */
+  fitNotice(width: number, height: number): void {
+    const mode = this.window.overlayMode
+    if (mode.kind !== 'notice' || !(width > 0 && height > 0)) return
+    mode.card = { width: Math.min(Math.ceil(width), 600), height: Math.min(Math.ceil(height), 300) }
+    this.window.setOverlay(mode, overlayRect(mode, this.frame(), false))
+  }
+
+  private showNotice(text: string, closeAfterMs: number, at: 'top' | 'bottom'): void {
+    const notice: OverlayMode = { kind: 'notice', text, at }
     this.setOverlay(notice, false)
     const window = this.cur
     setTimeout(() => {
@@ -1126,7 +1132,7 @@ export class Browser implements TabHost {
     // A page in full screen could draw a fake browser or system: say whose page it is and how to leave.
     if (on && this.pageInFront()) {
       const site = hostOf(tab.wc.getURL())
-      this.showNotice(`${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit`, 3500)
+      this.showNotice(`${site ? `${site} is` : 'This page is'} in full screen · Press Esc to exit`, 3500, 'top')
     } else if (!on && this.window.overlayMode.kind === 'notice') this.setOverlay({ kind: 'none' }, false)
   }
 

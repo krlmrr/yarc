@@ -323,7 +323,7 @@ export type OverlayMode =
   | { kind: 'find' }
   | { kind: 'share-picker'; id: string; site: string; sources: ShareSource[]; systemAudio: boolean }
   /** A short message over the top of the page that doesn't take the keyboard. */
-  | { kind: 'notice'; text: string }
+  | { kind: 'notice'; text: string; at: 'top' | 'bottom'; card?: { width: number; height: number } }
   | { kind: 'settings'; section?: SettingsSection }
   | { kind: 'library'; tab?: 'archive' | 'history' | 'downloads' | 'spaces' }
   | { kind: 'space-editor'; spaceId?: ID }
