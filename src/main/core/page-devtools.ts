@@ -1,5 +1,5 @@
 // What YARC asks of a page through the DevTools protocol; nothing else attaches a debugger.
-import type { WebContents } from 'electron'
+import { WebContentsView, type WebContents } from 'electron'
 import { logError } from './log'
 
 /** Past this many CSS pixels a screenshot outgrows the GPU's largest texture. */
@@ -34,4 +34,11 @@ export function emulateDeviceMetrics(wc: WebContents, metrics: object): boolean 
   }
   wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', metrics).catch(() => {})
   return true
+}
+
+/** Electron loads its own DevTools front end into the view, with no preload and nothing of YARC's. */
+export function devtoolsViewFor(page: WebContents): WebContentsView {
+  const view = new WebContentsView()
+  page.setDevToolsWebContents(view.webContents)
+  return view
 }

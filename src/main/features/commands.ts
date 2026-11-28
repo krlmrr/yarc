@@ -271,10 +271,13 @@ export async function dispatch(browser: Browser, action: Action): Promise<void> 
     case 'devtools':
     case 'find': {
       if (!tab) return
+      if (action.type === 'devtools' && browser.docksDevtools(tab)) return browser.devtools.toggle(tab)
       const toast = runPageAction(tab.wc, action)
       if (toast) browser.toast(toast)
       return action.type === 'zoom' ? browser.emitSoon() : undefined
     }
+    case 'devtoolsPopOut':
+      return tab && browser.devtools.popOut(tab)
     case 'newFolder':
       space.pinned.unshift({ kind: 'folder', id: newId(), name: action.name || 'New Folder', open: true, children: [] })
       return browser.changed()
