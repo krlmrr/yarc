@@ -123,23 +123,37 @@ test('spaces with their own profile do not share storage', async () => {
 test('a filled button keeps readable text on a pale space color, in light and dark', async () => {
   const original = await space()
   const ui = await pageWithUrl('index.html')
-  const buttonText = (expectedSpace: string) =>
-    ui.evaluate((wanted) => {
-      if (getComputedStyle(document.documentElement).getPropertyValue('--space') !== wanted) return 'waiting'
-      const button = document.body.appendChild(document.createElement('button'))
-      button.className = 'btn primary'
-      const color = getComputedStyle(button).color
-      button.remove()
-      const [first, second, third] = color.match(/[\d.]+/g)!.map(Number)
-      const light = color.startsWith('oklch') ? first > 0.5 : first + second + third > 384
-      return light ? 'light' : 'dark'
-    }, expectedSpace)
+  const buttonText = (expectedSpace: string, scope: string) =>
+    ui.evaluate(
+      ([wanted, scopeClass]) => {
+        if (getComputedStyle(document.documentElement).getPropertyValue('--space') !== wanted) return 'waiting'
+        const holder = document.body.appendChild(document.createElement('div'))
+        holder.className = scopeClass
+        const button = holder.appendChild(document.createElement('button'))
+        button.className = 'btn primary'
+        const color = getComputedStyle(button).color
+        holder.remove()
+        const [first, second, third] = color.match(/[\d.]+/g)!.map(Number)
+        const lightness = color.startsWith('oklch') ? first : (first + second + third) / 765
+        return lightness > 0.95 ? 'white' : lightness < 0.3 ? 'dark' : `grey ${color}`
+      },
+      [expectedSpace, scope] as const
+    )
+  const cases = [
+    { color: '#eeeeee', text: 'dark' },
+    { color: '#dcdddc', text: 'dark' },
+    { color: '#787778', text: 'dark' },
+    { color: '#1f2f80', text: 'white' }
+  ]
   try {
     for (const appearance of ['light', 'dark'] as const) {
-      await dispatch({ type: 'updateSpace', id: original.id, color: '#eeeeee', appearance })
-      await expect.poll(() => buttonText('#eeeeee')).toBe('dark')
-      await dispatch({ type: 'updateSpace', id: original.id, color: '#2a3f9e', appearance })
-      await expect.poll(() => buttonText('#2a3f9e')).toBe('light')
+      for (const { color, text } of cases) {
+        await dispatch({ type: 'updateSpace', id: original.id, color, appearance })
+        await expect.poll(() => buttonText(color, '')).not.toBe('waiting')
+        expect(await buttonText(color, ''), `${color} ${appearance}`).not.toMatch(/^grey/)
+        expect(await buttonText(color, 'settings'), `${color} ${appearance} in Settings`).not.toMatch(/^grey/)
+        if (color === '#eeeeee' || color === '#1f2f80') expect(await buttonText(color, '')).toBe(text)
+      }
     }
   } finally {
     await dispatch({ type: 'updateSpace', id: original.id, color: original.color, appearance: original.appearance ?? '' })

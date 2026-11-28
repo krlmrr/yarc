@@ -23,7 +23,7 @@ Tokens are CSS custom properties in `src/renderer/src/tokens.css`: light on `:ro
 | `--bg` | space 26% into `#f4f2fb` | space 22% into `#1b1a20` |
 | `--bg-2` | space-2 40% into `#e8e4f6` | space-2 34% into `#16151a` |
 | `--accent` | space 85% with black | space 70% with white |
-| `--on-accent` | text on `--accent`: near-black once its oklch lightness passes 0.7, white below | same |
+| `--on-accent` | text on `--accent`: near-black once its oklch lightness reaches 0.58, where it gives more contrast than white; white below | same |
 | `--space-strong` | space with oklch lightness × 0.67 | same |
 | `--text` | `#1d1b22` | `#f1eff6` |
 | `--text-2` / `--text-3` | text at 62% / 52% | text at 62% / 40% |

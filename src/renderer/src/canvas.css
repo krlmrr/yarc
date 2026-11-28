@@ -660,7 +660,7 @@ svg.draft path {
   --panel: var(--card);
   --space: var(--canvas-accent);
   --accent: var(--canvas-accent);
-  --on-accent: oklch(from var(--accent) calc(0.22 + 0.78 * clamp(0, (0.7 - l) * 1000, 1)) 0 0);
+  --on-accent: oklch(from var(--accent) calc(0.22 + 0.78 * round(up, clamp(0, 0.58 - l, 1), 1)) 0 0);
   --line: var(--canvas-line);
   --hover: var(--canvas-hover);
   --text: var(--chrome-text);

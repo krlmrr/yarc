@@ -8,7 +8,7 @@
   --set-seg-on: #fff;
   --set-off: rgb(29 27 34 / 0.16);
   --set-fill: var(--accent);
-  --on-set-fill: oklch(from var(--set-fill) calc(0.22 + 0.78 * clamp(0, (0.7 - l) * 1000, 1)) 0 0);
+  --on-set-fill: oklch(from var(--set-fill) calc(0.22 + 0.78 * round(up, clamp(0, 0.58 - l, 1), 1)) 0 0);
   flex-direction: row;
   top: 8vh;
   width: min(840px, calc(100vw - 48px));
