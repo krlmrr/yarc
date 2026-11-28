@@ -353,3 +353,33 @@ test('a toast shows where it can be seen: in the sidebar on either side, and abo
     await dispatch({ type: 'close', id: tabId })
   }
 })
+
+test('dragging a tab out of the revealed sidebar on the right keeps the sidebar on the right', async () => {
+  await dispatch({ type: 'open', url: `${base}/drag-right`, where: 'tab' })
+  const tabId = (await space()).activeItemId!
+  await app.evaluate(() => {
+    const browser = (globalThis as any).arcBrowser
+    browser.realWatchSidebarReveal ??= browser.watchSidebarReveal
+    browser.watchSidebarReveal = () => {}
+  })
+  const overlay = await pageWithUrl('overlay.html')
+  try {
+    await dispatch({ type: 'settings', patch: { sidebarVisible: false, sidebarRight: true } })
+    await dispatch({ type: 'sidebarReveal', show: true })
+    await expect.poll(overlayKind).toBe('sidebar')
+    await dispatch({ type: 'tabDrag', id: tabId })
+    const windowWidth = await app.evaluate(() => (globalThis as any).arcBrowser.window.win.getContentSize()[0])
+    await expect.poll(() => app.evaluate(() => (globalThis as any).arcBrowser.window.overlay.getBounds().width)).toBe(windowWidth)
+    const sidebar = (await overlay.locator('.sidebar.floating').boundingBox())!
+    expect(sidebar.x).toBeGreaterThan(windowWidth / 2)
+  } finally {
+    await dispatch({ type: 'tabDrag' })
+    await dispatch({ type: 'overlay', mode: { kind: 'none' } })
+    await app.evaluate(() => {
+      const browser = (globalThis as any).arcBrowser
+      browser.watchSidebarReveal = browser.realWatchSidebarReveal
+    })
+    await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })
+    await dispatch({ type: 'close', id: tabId })
+  }
+})

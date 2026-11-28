@@ -39,7 +39,7 @@ function App() {
         <div className={floatingSidebarClass} style={{ height: '100%' }}>
           {/* Zones first so the sidebar stays on top: only over the page does a drag make a split. */}
           {state.tabDrag ? <SplitDropZones state={state} overlayInWindow={{ x: 0, y: 0 }} /> : null}
-          <Sidebar state={state} floating />
+          <RevealedSidebar state={state} />
         </div>
       )
     case 'find':
@@ -63,11 +63,8 @@ function App() {
       return (
         <>
           {mode.overSidebar ? (
-            <div
-              className={floatingSidebarClass}
-              style={{ position: 'absolute', top: 0, height: '100%', width: state.settings.sidebarWidth + SIDEBAR_PAD, [state.settings.sidebarRight ? 'right' : 'left']: 0 }}
-            >
-              <Sidebar state={state} floating />
+            <div className={floatingSidebarClass} style={{ height: '100%' }}>
+              <RevealedSidebar state={state} />
             </div>
           ) : null}
           <ExtensionsPopover key={freshOnEachOpen} state={state} profileId={mode.profileId} anchor={mode.anchor} close={close} />
@@ -324,6 +321,16 @@ function Toast() {
   return (
     <div className="notices overlay-notices">
       <div className="toast">{toast}</div>
+    </div>
+  )
+}
+
+/** On its own side, also while the overlay covers the whole window: during a tab drag or under the extensions popover. */
+function RevealedSidebar({ state }: { state: AppState }) {
+  const { sidebarWidth, sidebarRight } = state.settings
+  return (
+    <div className="revealed-sidebar" style={{ width: sidebarWidth + SIDEBAR_PAD, [sidebarRight ? 'right' : 'left']: 0 }}>
+      <Sidebar state={state} floating />
     </div>
   )
 }

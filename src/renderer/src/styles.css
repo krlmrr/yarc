@@ -140,6 +140,12 @@
   z-index: 10;
 }
 
+.revealed-sidebar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
 .swipe-strip {
   position: fixed;
   overflow: hidden;
