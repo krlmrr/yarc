@@ -119,3 +119,29 @@ test('spaces with their own profile do not share storage', async () => {
   await dispatch({ type: 'switchSpace', id: firstSpace })
   expect((await state()).activeSpaceId).toBe(firstSpace)
 })
+
+test('a filled button keeps readable text on a pale space color, in light and dark', async () => {
+  const original = await space()
+  const ui = await pageWithUrl('index.html')
+  const buttonText = (expectedSpace: string) =>
+    ui.evaluate((wanted) => {
+      if (getComputedStyle(document.documentElement).getPropertyValue('--space') !== wanted) return 'waiting'
+      const button = document.body.appendChild(document.createElement('button'))
+      button.className = 'btn primary'
+      const color = getComputedStyle(button).color
+      button.remove()
+      const [first, second, third] = color.match(/[\d.]+/g)!.map(Number)
+      const light = color.startsWith('oklch') ? first > 0.5 : first + second + third > 384
+      return light ? 'light' : 'dark'
+    }, expectedSpace)
+  try {
+    for (const appearance of ['light', 'dark'] as const) {
+      await dispatch({ type: 'updateSpace', id: original.id, color: '#eeeeee', appearance })
+      await expect.poll(() => buttonText('#eeeeee')).toBe('dark')
+      await dispatch({ type: 'updateSpace', id: original.id, color: '#2a3f9e', appearance })
+      await expect.poll(() => buttonText('#2a3f9e')).toBe('light')
+    }
+  } finally {
+    await dispatch({ type: 'updateSpace', id: original.id, color: original.color, appearance: original.appearance ?? '' })
+  }
+})

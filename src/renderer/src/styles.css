@@ -430,7 +430,7 @@ select:focus {
 .btn.primary {
   background: var(--accent);
   border-color: transparent;
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .btn.danger {
