@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MAX_PANES, paneIds, placePane, previewRect, sideAt, type Side } from '../../shared/split'
+import { SIDEBAR_PAD } from '../../shared/sidebar-geometry'
 import { isFloating } from '../../shared/tour'
 import { findItem, tabTitle } from '../../shared/tree'
 import type { AppState, ID, Rect } from '../../shared/types'
@@ -30,10 +31,11 @@ function App() {
 
   if (!state || mode.kind === 'none') return null
   const freshOnEachOpen = `${mode.kind}-${opened}`
+  const floatingSidebarClass = cx(isMac ? 'mac' : 'win', state.fullscreen && 'fullscreen', state.settings.sidebarRight && 'sidebar-right')
   switch (mode.kind) {
     case 'sidebar':
       return (
-        <div className={cx(isMac ? 'mac' : 'win', state.fullscreen && 'fullscreen', state.settings.sidebarRight && 'sidebar-right')} style={{ height: '100%' }}>
+        <div className={floatingSidebarClass} style={{ height: '100%' }}>
           {/* Zones first so the sidebar stays on top: only over the page does a drag make a split. */}
           {state.tabDrag ? <SplitDropZones state={state} overlayInWindow={{ x: 0, y: 0 }} /> : null}
           <Sidebar state={state} floating />
@@ -57,7 +59,19 @@ function App() {
         </>
       )
     case 'extensions':
-      return <ExtensionsPopover key={freshOnEachOpen} state={state} profileId={mode.profileId} anchor={mode.anchor} close={close} />
+      return (
+        <>
+          {mode.overSidebar ? (
+            <div
+              className={floatingSidebarClass}
+              style={{ position: 'absolute', top: 0, height: '100%', width: state.settings.sidebarWidth + SIDEBAR_PAD, [state.settings.sidebarRight ? 'right' : 'left']: 0 }}
+            >
+              <Sidebar state={state} floating />
+            </div>
+          ) : null}
+          <ExtensionsPopover key={freshOnEachOpen} state={state} profileId={mode.profileId} anchor={mode.anchor} close={close} />
+        </>
+      )
     case 'settings':
       return (
         <>

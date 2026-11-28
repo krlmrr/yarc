@@ -710,7 +710,12 @@ export class Browser implements TabHost {
   }
 
   private syncTrafficLights(): void {
-    this.window.setTrafficLights(this.state.settings.sidebarVisible || this.window.overlayMode.kind === 'sidebar', trafficLightsAt(this.frame()))
+    this.window.setTrafficLights(this.state.settings.sidebarVisible || this.overlayShowsSidebar(), trafficLightsAt(this.frame()))
+  }
+
+  private overlayShowsSidebar(): boolean {
+    const mode = this.window.overlayMode
+    return mode.kind === 'sidebar' || (mode.kind === 'extensions' && !!mode.overSidebar)
   }
 
   private frame(): WindowFrame {
@@ -719,7 +724,7 @@ export class Browser implements TabHost {
       size: this.window.size(),
       content: this.cur.layout.content,
       settings,
-      sidebarRevealed: !settings.sidebarVisible && this.window.overlayMode.kind === 'sidebar',
+      sidebarRevealed: !settings.sidebarVisible && this.overlayShowsSidebar(),
       captionHeight: this.window.captionHeight()
     }
   }

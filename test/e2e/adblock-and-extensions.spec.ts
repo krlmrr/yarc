@@ -317,8 +317,11 @@ test('an extension opened from the popover opens inside the window, whichever si
     await dispatch({ type: 'sidebarReveal', show: true })
     await overlay.locator('.extensions-button').click()
     await expect.poll(overlayKind).toBe('extensions')
+    const overlayWidth = await overlay.evaluate(() => window.innerWidth)
     const card = (await overlay.locator('.extensions-popover').boundingBox())!
-    expect(card.x).toBeGreaterThan((await overlay.evaluate(() => window.innerWidth)) / 2)
+    expect(card.x).toBeGreaterThan(overlayWidth / 2)
+    const sidebar = (await overlay.locator('.sidebar').boundingBox())!
+    expect(sidebar.x + sidebar.width).toBeGreaterThan(overlayWidth - 20)
     await expectPopupInsideWindow(() => overlay.locator(`.extension-row[data-id="${extId}"] button[is="browser-action"]`).click())
   } finally {
     await dispatch({ type: 'settings', patch: { sidebarVisible: true, sidebarRight: false } })

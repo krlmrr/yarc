@@ -331,7 +331,7 @@ export type OverlayMode =
   | { kind: 'live-folder'; folderId?: ID }
   | { kind: 'sidebar' }
   /** `anchor`: the puzzle button, in window coordinates. */
-  | { kind: 'extensions'; profileId: ID; anchor: Rect }
+  | { kind: 'extensions'; profileId: ID; anchor: Rect; overSidebar?: boolean }
   | { kind: 'switcher'; order: ID[]; index: number }
   /** The overlay draws the dimmed backdrop and Peek's buttons beside `card`. */
   | { kind: 'peek'; card: Rect }
